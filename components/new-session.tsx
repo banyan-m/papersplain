@@ -46,10 +46,11 @@ const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 export async function startDraftSession(
 	text: string,
 	fetchLike: typeof fetch,
-	mode?: "practice",
+	mode?: "practice" | "paper",
 	picks?: readonly DraftPick[],
 	starter = new SessionStarter(),
 	settingsIdentity?: string,
+	paperMode: "walkthrough" | "chat" = "walkthrough",
 ): Promise<string | null> {
 	const t = text.trim();
 	if (!t) return null;
@@ -60,7 +61,9 @@ export async function startDraftSession(
 	return starter.start(
 		mode === "practice"
 			? { title: t, kind: "practice", ...(picks && picks.length > 0 ? { graphContext: { propositions: picks } } : {}) }
-			: { title: t },
+			: mode === "paper"
+				? { title: t, kind: "paper", paperMode }
+				: { title: t },
 		fetchLike,
 		settingsIdentity,
 	);
@@ -79,11 +82,16 @@ export function DraftShell({
 	startError = false,
 	setupCta,
 	mode = "teach",
+	paperMode = "walkthrough",
+	onPaperMode,
 	picks = [],
 	onOpenPicker,
 	onClearPicks,
 	overlay,
 }: {
+	/** papersplainer: the paper draft's walkthrough | free chat switch. */
+	paperMode?: "walkthrough" | "chat";
+	onPaperMode?: (mode: "walkthrough" | "chat") => void;
 	busy: boolean;
 	text: string;
 	onChange: (v: string) => void;
@@ -92,7 +100,7 @@ export function DraftShell({
 	/** The practice draft (owner, 2026-10-04): ?mode=practice — the
 	 *  created session carries kind:"practice" and the copy changes
 	 *  (the practice agent opens; no probing). */
-	mode?: "teach" | "practice";
+	mode?: "teach" | "practice" | "paper";
 	/** The first-run CTA (fix wave chunk B): the same "Set up your models"
 	 *  affordance home carries, rendered above the draft shell — passed by
 	 *  NewSession, which owns the configured state and the SetupDialog. */
@@ -178,10 +186,14 @@ export function DraftShell({
 						<Conversation className="h-full min-w-0 flex-1" initial="instant">
 							<ConversationContent className="min-h-full gap-0 p-0">
 								<ConversationEmptyState
-									title={mode === "practice" ? "New practice session" : "New session"}
+									title={mode === "practice" ? "New practice session" : mode === "paper" ? "New paper session" : "New session"}
 									description={
 										mode === "practice"
 											? "Pick nodes from your knowledge graph, describe what you want to practice, or bring your own problem."
+											: mode === "paper"
+												? paperMode === "chat"
+													? "Give a paper as a PDF file path or a link, then ask anything about it."
+													: "Give a paper as a PDF file path or a link. The guide walks you through it one section at a time, with visuals."
 											: "The teacher will open by probing what you already know."
 									}
 								/>
@@ -212,12 +224,31 @@ export function DraftShell({
 										// input (owner refinement round, 2026-09-24) — no lesson has
 										// started yet, so the composer must not read like one is in
 										// flight.
-										placeholder={mode === "practice" ? "What do you want to practice?" : "What do you want to learn?"}
+										placeholder={mode === "practice" ? "What do you want to practice?" : mode === "paper" ? "Paste the paper's PDF path or link" : "What do you want to learn?"}
 									/>
 								</div>
 								<StatsBar
 									dictationSlot={<DictationBar dictation={dictation} />}
 									turns={[]}
+									leadingSlot={mode === "paper" ? (
+									<div className="pointer-events-auto flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="paper-mode-switch">
+										{(["walkthrough", "chat"] as const).map((m) => (
+											<button
+												key={m}
+												type="button"
+												data-testid={`paper-mode-${m}`}
+												aria-pressed={paperMode === m}
+												onClick={() => onPaperMode?.(m)}
+												className={
+													"rounded-sm px-2 py-0.5 text-[11px] uppercase tracking-wider transition-colors " +
+													(paperMode === m ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")
+												}
+											>
+												{m === "walkthrough" ? "Walkthrough" : "Free chat"}
+											</button>
+										))}
+									</div>
+									) : undefined}
 								/>
 							</div>
 						</div>
@@ -239,8 +270,14 @@ export function DraftShell({
 	);
 }
 
-export function NewSession({ initialConfigured, mode = "teach" }: { initialConfigured: boolean; mode?: "teach" | "practice" }) {
+export function NewSession({ initialConfigured, mode = "teach", initialPaperMode = "walkthrough" }: { initialConfigured: boolean; mode?: "teach" | "practice" | "paper"; initialPaperMode?: "walkthrough" | "chat" }) {
 	const router = useRouter();
+	const [paperMode, setPaperMode] = useState<"walkthrough" | "chat">(initialPaperMode);
+	const paperModeRef = useRef(paperMode);
+	const applyPaperMode = (next: "walkthrough" | "chat") => {
+		paperModeRef.current = next;
+		setPaperMode(next);
+	};
 	const [text, setText] = useState("");
 	/* The draft MIRROR ("nothing gets lost" round, 2026-10-01): the shell's
 	 * finish-first send calls THIS send after the dictation flush — which
@@ -315,8 +352,8 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 		startingRef.current = true;
 		setBusy(true);
 		setStartError(false);
-		void startDraftSession(draft, fetch, mode === "practice" ? "practice" : undefined, mode === "practice" ? picksRef.current : undefined,
-			starterRef.current, JSON.stringify(catalog?.slots.strong))
+		void startDraftSession(draft, fetch, mode === "practice" ? "practice" : mode === "paper" ? "paper" : undefined, mode === "practice" ? picksRef.current : undefined,
+			starterRef.current, JSON.stringify(catalog?.slots.strong), paperModeRef.current)
 			.then((target) => {
 				if (target) router.push(target);
 				else { startingRef.current = false; setBusy(false); }
@@ -337,6 +374,8 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 				onChange={applyText}
 				onSend={send}
 				mode={mode}
+				paperMode={paperMode}
+				onPaperMode={applyPaperMode}
 				picks={picks}
 				onOpenPicker={openPicker}
 				onClearPicks={() => applyPicks([])}

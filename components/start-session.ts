@@ -2,7 +2,9 @@ import { clearOpeningPrompt, OPENING_PROMPT_FAILURE, stashOpeningPrompt } from "
 
 interface SessionCreation {
 	title: string;
-	kind?: "practice";
+	kind?: "practice" | "paper";
+	/** Paper sessions: walkthrough (default) or free chat. */
+	paperMode?: "walkthrough" | "chat";
 	graphContext?: { propositions: readonly { id: string; name: string; statement: string }[] };
 }
 

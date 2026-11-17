@@ -13,6 +13,8 @@ import {
 	type ProbeDoneContext,
 	type ProberToolContext,
 	type TeacherToolContext,
+	createGuideTools,
+	type GuideToolContext,
 } from "./tools.ts";
 import { practiceTools, createPracticeGate, type PracticeGate, type PracticeToolContext } from "./tools/practice.ts";
 import { pluginProblemTools, isPluginProblemPoseAcknowledgment, type NativePluginProblemContribution } from "./plugin-problem-tools.ts";
@@ -54,13 +56,14 @@ import { PluginQuestionLedger, type NativePluginQuestionContribution } from "./p
 
 /** Which agent's prompt directory to compose. Practice (2026-10-04)
  *  composes ONLY its own directory — see prompt-segments.ts. */
-export type AgentKind = "prober" | "teacher" | "practice";
+export type AgentKind = "prober" | "teacher" | "practice" | "guide";
 
 /** Reserve conversation builtins even when role/mechanics/settings gates hide them.
  * New builtin names must join this catalog; actual turn tools are reserved too. */
 export const CONVERSATION_TOOL_NAMES = Object.freeze([
 	...QUESTION_TOOLS, ...TOGGLEABLE_TOOLS, "probe_done", "read", "ls", "find", "grep",
 	"plan_init", "list_sessions", "list_propositions", "problem", "conclude", sendToUserTool.name,
+	"manim", "molecule", "fetch_paper",
 ] as const);
 
 // P2 (2026-09-19): segment discovery + override resolution live in ONE
@@ -101,6 +104,7 @@ const composedInstructions: Record<AgentKind, string> = {
 	prober: composeInstructions("prober"),
 	teacher: composeInstructions("teacher"),
 	practice: composeInstructions("practice"),
+	guide: composeInstructions("guide"),
 };
 
 // Money channel (wave 4): the chat-handler passes a per-turn collector;
@@ -125,6 +129,8 @@ export interface AgentBuildOptions {
 	 * join, before dispatch. Throws through the SDK's normal failed-response
 	 * lifecycle, never through the conversion seam. */
 	validateContext?: (messages: readonly AgentMessage[]) => void;
+	/** Text appended to the composed system prompt (the paper guide's session mode). */
+	promptAppendix?: string;
 	/** Tests may pass a bare tool registry to drive deterministic flows.
 	 *  An explicit registry is NEVER toggle-filtered — the caller owns it. */
 	tools?: Record<string, AgentTool<any>>;
@@ -214,7 +220,8 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const composedPrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
-	const builtinPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
+	const withAppendix = opts.promptAppendix ? `${composedPrompt}\n\n---\n\n${opts.promptAppendix}` : composedPrompt;
+	const builtinPrompt = narrationGuard ? `${withAppendix}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : withAppendix;
 	// Bind native read and preserve the kind/model-aware Claude output gate
 	// before resolving additive plugins. Explicit registries remain caller-owned.
 	const builtinTools = [
@@ -225,7 +232,9 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 			? [withArgumentHeal(sendToUserTool)]
 			: []),
 	];
-	const contributions = opts.tools === undefined && opts.chatId && opts.pluginContributions
+	// Plugins target the prober, teacher and practice agents; the paper
+	// guide takes no plugin contributions.
+	const contributions = kind !== "guide" && opts.tools === undefined && opts.chatId && opts.pluginContributions
 		? opts.pluginContributions({ chatId: opts.chatId, agent: kind }, [...CONVERSATION_TOOL_NAMES, ...builtinTools.map(tool => tool.name)])
 		: undefined;
 	const questionLedger = contributions?.questionTypes?.length && opts.chatId
@@ -405,8 +414,26 @@ export function createPracticeAgent(ctx: PracticeToolContext, opts: AgentBuildOp
 	return baseAgentOptions("practice", opts, Object.values(practiceTools(ctx, gate)), undefined, { gate, graphNodes: ctx.graphNodes });
 }
 
+/** papersplainer: the session-mode paragraph appended to the guide's prompt. */
+export function guideModeInstructions(mode: "walkthrough" | "chat"): string {
+	return mode === "chat"
+		? "## This session's mode: free chat\n\nThe learner leads. Answer what they ask about the paper, grounded in the paper. Do not start a section-by-section tour unless they ask for one. Make a visual only when it answers the question better than a paragraph would."
+		: "## This session's mode: walkthrough\n\nYou lead. Go through the paper one section or figure at a time, in the order that builds understanding. After each one, STOP and wait: the learner says continue, or asks about what they just read. Never run on into the next section in the same turn.";
+}
+
+/**
+ * The GUIDE (papersplainer): runs a kind:"paper" session from turn 1. It
+ * explains a research paper, in walkthrough or free-chat mode, with
+ * visuals. No prober→teacher split, no plan, no graded questions.
+ */
+export function createGuideAgent(ctx: GuideToolContext, mode: "walkthrough" | "chat", opts: AgentBuildOptions = {}) {
+	const tools = opts.tools ?? createGuideTools(ctx, opts.toolToggles);
+	return baseAgentOptions("guide", { ...opts, promptAppendix: guideModeInstructions(mode) }, Object.values(tools));
+}
+
+export type GuideAgent = ReturnType<typeof createGuideAgent>;
 export type ProberAgent = ReturnType<typeof createProberAgent>;
 export type TeacherAgent = ReturnType<typeof createTeacherAgent>;
 export type PracticeAgent = ReturnType<typeof createPracticeAgent>;
-export type TeachingAgent = ProberAgent | TeacherAgent | PracticeAgent;
+export type TeachingAgent = ProberAgent | TeacherAgent | PracticeAgent | GuideAgent;
 

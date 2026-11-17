@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SurfaceRegion, usePageSurfaceBoundary, useSurfaceChromeStyle } from "./plugin-surfaces";
-import { CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
+import { CornerDownLeftIcon, DumbbellIcon, FileTextIcon } from "lucide-react";
 import { GraphView } from "@/components/graph-view";
 import { MinimalHome } from "@/components/minimal-home";
 import { SetupDialog } from "@/components/setup-dialog";
@@ -100,7 +100,8 @@ export function Home({
 	 *  may carry proposition picks from the chain table (the chip above
 	 *  the composer opens the picker; the picks seed the opening prompt).
 	 *  Not enforcing any input format — the picks are a convenience. */
-	const [mode, setMode] = useState<"teach" | "practice">("teach");
+	const [mode, setMode] = useState<"teach" | "practice" | "paper">("teach");
+	const [paperMode, setPaperMode] = useState<"walkthrough" | "chat">("walkthrough");
 	const [practiceProps, setPracticeProps] = useState<{ id: string; name: string; statement: string }[]>([]);
 	const [chainSelectOpen, setChainSelectOpen] = useState(false);
 	// The chain table is CONTROLLED off this id set (the lifted pick).
@@ -154,7 +155,7 @@ export function Home({
 			// chains among them); the prompt stays the learner's own words.
 			const target = await starterRef.current.start({
 				title: t,
-				...(mode === "practice" ? { kind: "practice" } : {}),
+				...(mode === "practice" ? { kind: "practice" as const } : mode === "paper" ? { kind: "paper" as const, paperMode } : {}),
 				...(practiceProps.length > 0 ? { graphContext: { propositions: practiceProps } } : {}),
 			}, fetch, JSON.stringify(catalog?.slots.strong));
 			router.push(target);
@@ -275,7 +276,7 @@ export function Home({
 								void start();
 							}
 						}}
-						placeholder={mode === "practice" ? "What do you want to practice?" : "What do you want to learn?"}
+						placeholder={mode === "practice" ? "What do you want to practice?" : mode === "paper" ? "Paste a paper's PDF path or link" : "What do you want to learn?"}
 						autoFocus
 						className="field-sizing-content lh-input max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 					/>
@@ -299,8 +300,9 @@ export function Home({
 						dictationSlot={<DictationBar dictation={dictation} />}
 						turns={[] as TurnUsage[]}
 						leadingSlot={
+							<div className="flex items-center gap-1.5">
 							<div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="home-mode-switch">
-								{(["teach", "practice"] as const).map((m) => (
+								{(["teach", "practice", "paper"] as const).map((m) => (
 									<button
 										key={m}
 										type="button"
@@ -313,10 +315,30 @@ export function Home({
 												: "text-muted-foreground hover:text-foreground")
 										}
 									>
-										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : null}
-										{m === "teach" ? "Teach" : "Practice"}
+										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : m === "paper" ? <FileTextIcon aria-hidden="true" className="size-3" /> : null}
+										{m === "teach" ? "Teach" : m === "practice" ? "Practice" : "Paper"}
 									</button>
 								))}
+							</div>
+							{mode === "paper" && (
+								<div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="home-paper-mode-switch">
+									{(["walkthrough", "chat"] as const).map((m) => (
+										<button
+											key={m}
+											type="button"
+											data-testid={`home-paper-mode-${m}`}
+											aria-pressed={paperMode === m}
+											onClick={() => setPaperMode(m)}
+											className={
+												"rounded-sm px-2 py-0.5 text-[11px] uppercase tracking-wider transition-colors " +
+												(paperMode === m ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")
+											}
+										>
+											{m === "walkthrough" ? "Walkthrough" : "Free chat"}
+										</button>
+									))}
+								</div>
+							)}
 							</div>
 						}
 					/>

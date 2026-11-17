@@ -67,7 +67,7 @@ import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext, type SessionImage } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, MessageCircleQuestionIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, DumbbellIcon, FileTextIcon, MessageCircleQuestionIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { PluginQuestionDock } from "./plugin-question-dock";
@@ -271,6 +271,7 @@ export function Chat({
 	initiallyCompacting = false,
 	initialConfigured = false,
 	kind = "teach",
+	paperMode,
 }: {
 	chatId: string;
 	title: string;
@@ -280,7 +281,9 @@ export function Chat({
 	/** The session kind (practice sessions, owner 2026-10-04): practice
 	 *  renders no phase chip (no probe→teach arc applies) and a Practice
 	 *  tag rides the header instead. */
-	kind?: "teach" | "practice";
+	kind?: "teach" | "practice" | "paper";
+	/** Paper sessions only: walkthrough or free chat. */
+	paperMode?: "walkthrough" | "chat";
 	initialPrompt?: string;
 	/** A teacher turn is running server-side but attached to no client
 	 * (navigated away mid-turn, returned while in flight). */
@@ -1735,6 +1738,16 @@ export function Chat({
 							<DumbbellIcon className="size-3" />
 							Practice
 						</span>
+					) : kind === "paper" ? (
+						<span
+							data-testid="phase-chip"
+							data-phase="paper"
+							aria-hidden="true"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+						>
+							<FileTextIcon className="size-3" />
+							{paperMode === "chat" ? "Paper · chat" : "Paper · walkthrough"}
+						</span>
 					) : (
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
@@ -1751,7 +1764,7 @@ export function Chat({
 							{messages.length === 0 && !busy && (
 								<ConversationEmptyState
 									title="New session"
-									description="The teacher will open by probing what you already know."
+									description={kind === "paper" ? "Give the paper as a PDF file path or a link to begin." : "The teacher will open by probing what you already know."}
 								/>
 							)}
 

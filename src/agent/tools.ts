@@ -14,8 +14,9 @@ import {
 } from "../core/question-core.ts";
 import { filterEnabledTools, type EnabledTools } from "../core/pending.ts";
 import type { JobRecord } from "../core/contracts.ts";
-import type { JobStore } from "../core/ports.ts";
-import { jobTools, type JobInput } from "./tools/jobs.ts";
+import type { ChatStore, JobStore } from "../core/ports.ts";
+import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
+import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
 import { proberGraphTools } from "./tools/graph.ts";
@@ -430,6 +431,42 @@ function withoutMechanics(enabled?: EnabledTools): EnabledTools | undefined {
 	if (!enabled) return undefined;
 	const { explain: _e, quiz: _q, ...rest } = enabled;
 	return rest;
+}
+
+/** papersplainer: the paper guide's registry context (no plan tree, no probe). */
+export interface GuideToolContext {
+	chatId: string;
+	chatStore: Pick<ChatStore, "saveImageSnapshot">;
+	jobStore: JobStore;
+	spawn: (job: JobRecord, input: JobInput) => void;
+	searchAvailable?: () => boolean;
+}
+
+/**
+ * papersplainer: the paper guide's tools. Reading (learner files, the pdf
+ * reader, fetch_paper for links), asking (ask_user_question, ungraded), and
+ * showing (visual, demo, manim, molecule, show_image). Deliberately NO quiz,
+ * explain, plan or probe tools: paper sessions never grade the learner;
+ * quizzes are the teach and practice sessions' job.
+ */
+export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools): Record<string, AgentTool<any>> {
+	const jobContext = { chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable };
+	return healToolRecord(
+		filterEnabledTools(
+			{
+				ask_user_question: askUserQuestionTool,
+				read: readTool,
+				ls: lsTool,
+				find: findTool,
+				grep: grepTool,
+				show_image: createShowImageTool(ctx),
+				fetch_paper: fetchPaperTool,
+				...jobTools(jobContext),
+				...renderJobTools(jobContext),
+			},
+			withoutMechanics(enabled),
+		),
+	);
 }
 
 export function createTeacherTools(

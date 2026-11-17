@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode, ThemeMode } from "@/src/core";
-import { DumbbellIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
@@ -338,6 +338,9 @@ export function SessionRow({
 			    the teaching rows and reads cleaner. */}
 			{(chat.kind ?? "teach") === "practice" && (
 				<DumbbellIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-label="Practice session" />
+			)}
+			{chat.kind === "paper" && (
+				<FileTextIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-label="Paper session" />
 			)}
 		</button>
 	);
@@ -721,6 +724,17 @@ function SessionsSidebar() {
 						<DumbbellIcon className="size-3 shrink-0" />
 						<span className="min-w-0 truncate">Practice</span>
 						<span className="sr-only">create a new practice session</span>
+					</button>
+					<button
+						type="button"
+						data-testid="new-session-paper"
+						title="Paper"
+						onClick={() => router.push("/chat/new?mode=paper")}
+						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					>
+						<FileTextIcon className="size-3 shrink-0" />
+						<span className="min-w-0 truncate">Paper</span>
+						<span className="sr-only">create a new paper session</span>
 					</button>
 				</PluginSidebarActions>
 
