@@ -11,7 +11,7 @@ import { renderToStaticMarkup as plainMarkup } from "react-dom/server";
 import { renderWithInteractionLayers as renderToStaticMarkup } from "./interaction-layer-render.tsx";
 import { ChatActionsContext } from "../components/chat.tsx";
 import { DraftShell, startDraftSession } from "../components/new-session.tsx";
-import { ManimOutputCard, MoleculeOutputCard, renderFileUrl } from "../components/artifacts/render-card.tsx";
+import { isMoleculeDetails, ManimOutputCard, MoleculeCard, renderFileUrl } from "../components/artifacts/render-card.tsx";
 import { sectionedSegments } from "../components/settings/agent-section.tsx";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
@@ -100,16 +100,23 @@ describe("render cards", () => {
 		assert.doesNotMatch(html, /<video/);
 	});
 
-	it("a structure image shows with its source", () => {
-		const html = inChat(<MoleculeOutputCard output={{ title: "Haemoglobin", file: "job_2.png", source: "PDB 4HHB" }} />);
-		assert.match(html, /<img[^>]*src="\/api\/chats\/chat_abc\/renders\/job_2\.png"/);
-		assert.match(html, /Haemoglobin · PDB 4HHB/);
+	const DETAILS = { title: "Haemoglobin", file: "mol_c1.cif", format: "cif", style: "cartoon", color: "chain", source: "PDB 4HHB", atoms: 4558, residues: 574, chains: ["A", "B", "C", "D"] };
+
+	it("a structure shows in the interactive viewer with its source and size", () => {
+		const html = inChat(<MoleculeCard part={{ type: "tool-molecule", state: "output-available", toolCallId: "c1", output: DETAILS }} />);
+		assert.match(html, /data-testid="molecule-viewer"/);
+		assert.match(html, /Haemoglobin · PDB 4HHB · 574 residues, 4 chains · drag to rotate, scroll to zoom/);
+		assert.match(html, /href="\/api\/chats\/chat_abc\/renders\/mol_c1\.cif"/);
 	});
 
-	it("a failed structure render shows the reason", () => {
-		const html = inChat(<MoleculeOutputCard output={{ title: "X", file: "", source: "PDB 9ZZZ", notes: "FAILED: HTTP 404" }} />);
-		assert.match(html, /data-testid="molecule-card-failed"/);
-		assert.match(html, /FAILED: HTTP 404/);
+	it("an unusable record never reaches the viewer", () => {
+		assert.equal(isMoleculeDetails(DETAILS), true);
+		assert.equal(isMoleculeDetails({ ...DETAILS, file: "../../auth.json" }), false);
+		assert.equal(isMoleculeDetails({ ...DETAILS, style: "wireframe" }), false);
+		assert.equal(isMoleculeDetails(null), false);
+		const html = inChat(<MoleculeCard part={{ type: "tool-molecule", state: "output-available", toolCallId: "c1", output: { ...DETAILS, file: "../x.cif" } }} />);
+		assert.match(html, /could not be displayed/);
+		assert.doesNotMatch(html, /molecule-viewer/);
 	});
 });
 

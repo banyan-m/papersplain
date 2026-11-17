@@ -1,12 +1,13 @@
 /**
- * papersplainer render jobs: the Manim animation maker and the Molecular
- * Nodes structure render.
+ * papersplainer visuals: the Manim animation maker and the molecule
+ * viewer tool.
  *
  *   1. contracts (file names, failure shapes, steer text)
  *   2. the manim-maker loop with a fake model + fake renderer
- *   3. the molecule render's input rules and result shaping (fake Blender run)
- *   4. REAL renders, only when LH_MANIM_PYTHON / LH_MOLECULE_PYTHON point at
- *      interpreters with manim / molecularnodes installed (skipped otherwise)
+ *   3. the molecule tool: input rules, structure summaries, saved file,
+ *      viewer style mapping
+ *   4. REAL Manim renders, only when LH_MANIM_PYTHON points at an
+ *      interpreter with manim installed (skipped otherwise)
  */
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -17,8 +18,12 @@ import { createCanvas } from "@napi-rs/canvas";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseStep, type ToolCall } from "@earendil-works/pi-ai";
 import type { PiEngine } from "../src/agent/models.ts";
 import { createManimRenderer, runManimMaker, sceneProblem, type ManimRender, type ManimRenderer } from "../src/agent/subagents/manim-maker.ts";
-import { moleculeInputProblem, renderMolecule } from "../src/agent/subagents/molecule-render.ts";
-import { uvAssetName } from "../src/agent/subagents/render-env.ts";
+import { createMoleculeTool, moleculeInputProblem } from "../src/agent/tools/molecule.ts";
+import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
+import { chatRendersDir, trimEnv, uvAssetName } from "../src/agent/subagents/render-env.ts";
+import { summarizeCif, summarizePdb } from "../src/core/structure-summary.ts";
+import { moleculeViewSpec } from "../components/artifacts/molecule-style.ts";
+import type { MoleculeDetails } from "../src/core/contracts.ts";
 import { buildSubagentSteer, isRenderFileName, isSubagentFailure } from "../src/core/contracts.ts";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "papersplainer-test-"));
@@ -70,28 +75,26 @@ describe("papersplainer contracts", () => {
 	it("accepts only plain render file names", () => {
 		assert.equal(isRenderFileName("job_abc-1.mp4"), true);
 		assert.equal(isRenderFileName("job_abc.png"), true);
+		assert.equal(isRenderFileName("mol_call-1.cif"), true);
+		assert.equal(isRenderFileName("mol_call-1.pdb"), true);
 		assert.equal(isRenderFileName("../secrets.png"), false);
 		assert.equal(isRenderFileName("a/b.mp4"), false);
 		assert.equal(isRenderFileName("clip.exe"), false);
 		assert.equal(isRenderFileName(""), false);
 	});
 
-	it("an empty file is the failure shape for both kinds", () => {
+	it("an empty file is the animation failure shape", () => {
 		assert.equal(isSubagentFailure("manim", { title: "T", file: "", notes: "FAILED: x" }), true);
 		assert.equal(isSubagentFailure("manim", { title: "T", file: "j.mp4" }), false);
-		assert.equal(isSubagentFailure("molecule", { title: "T", file: "", source: "PDB 4HHB", notes: "FAILED: x" }), true);
-		assert.equal(isSubagentFailure("molecule", { title: "T", file: "j.png", source: "PDB 4HHB" }), false);
 	});
 
-	it("steer text tells the guide what arrived, and that it has not seen a structure image", () => {
+	it("steer text tells the guide what arrived", () => {
 		const job = { id: "j1", toolCallId: "t1" };
 		const ok = buildSubagentSteer({ ...job, kind: "manim" }, { title: "Matrix fill", file: "j1.mp4", notes: "Cells fill row by row." });
 		assert.match(ok.content as string, /Matrix fill/);
 		assert.match(ok.content as string, /Cells fill row by row/);
 		const bad = buildSubagentSteer({ ...job, kind: "manim" }, { title: "Matrix fill", file: "", notes: "FAILED: no LaTeX" });
 		assert.match(bad.content as string, /could not be rendered: FAILED: no LaTeX/);
-		const mol = buildSubagentSteer({ ...job, kind: "molecule" }, { title: "Haemoglobin", file: "j1.png", source: "PDB 4HHB", notes: "4 chains" });
-		assert.match(mol.content as string, /You have not seen the image yourself/);
 	});
 
 	it("names the uv download for each supported platform", () => {
@@ -183,45 +186,135 @@ describe("manim maker (fake model + fake renderer)", () => {
 	});
 });
 
-describe("molecule render", () => {
-	it("requires exactly one valid source and known style/colour", () => {
+const HELIX = fs.readFileSync(path.resolve("tests/helpers/helix.pdb"), "utf-8");
+const TINY_CIF = `data_TEST
+#
+loop_
+_atom_site.group_PDB
+_atom_site.id
+_atom_site.type_symbol
+_atom_site.label_atom_id
+_atom_site.label_comp_id
+_atom_site.label_asym_id
+_atom_site.label_seq_id
+_atom_site.Cartn_x
+_atom_site.Cartn_y
+_atom_site.Cartn_z
+_atom_site.auth_seq_id
+_atom_site.auth_asym_id
+_atom_site.pdbx_PDB_model_num
+ATOM   1 N N   MET A 1 1.0 2.0 3.0 1  A 1
+ATOM   2 C CA  MET A 1 1.5 2.0 3.0 1  A 1
+ATOM   3 N N   VAL A 2 2.0 2.0 3.0 2  A 1
+ATOM   4 N N   LEU B 1 9.0 2.0 3.0 1  B 1
+HETATM 5 O O   HOH C . 5.0 5.0 5.0 99 A 1
+HETATM 6 C "C1'" HEM D . 4.0 4.0 4.0 142 A 1
+ATOM   7 N N   MET A 1 1.1 2.0 3.0 1  A 2
+#
+`;
+
+describe("molecule tool", () => {
+	it("requires exactly one valid source", () => {
 		assert.equal(moleculeInputProblem({ pdbId: "4HHB" }), null);
-		assert.equal(moleculeInputProblem({ path: "~/structures/model.cif", style: "surface", color: "plddt" }), null);
+		assert.equal(moleculeInputProblem({ path: "~/structures/model.cif" }), null);
 		assert.match(moleculeInputProblem({}) ?? "", /exactly one/);
 		assert.match(moleculeInputProblem({ pdbId: "4HHB", path: "a.pdb" }) ?? "", /exactly one/);
 		assert.match(moleculeInputProblem({ pdbId: "haemoglobin" }) ?? "", /not a PDB ID/);
 		assert.match(moleculeInputProblem({ path: "notes.txt" }) ?? "", /structure file must be/);
-		assert.match(moleculeInputProblem({ pdbId: "4HHB", style: "wireframe" }) ?? "", /style must be/);
 	});
 
-	it("shapes the result from the render summary", async () => {
-		const out = path.join(tmp, "m", "job6.png");
-		const result = await renderMolecule({ title: "Haemoglobin", pdbId: "4hhb", style: "surface" }, {
-			outputPath: out,
-			run: async (spec) => {
-				assert.equal(spec.pdbId, "4HHB");
-				assert.equal(spec.style, "surface");
-				assert.equal(spec.color, "common");
-				fs.writeFileSync(spec.out, png());
-				return { atoms: 4779, residues: 574, chains: ["A", "B", "C", "D"] };
-			},
-		});
-		assert.equal(result.file, "job6.png");
-		assert.equal(result.source, "PDB 4HHB");
-		assert.match(result.notes ?? "", /4779 atoms, 574 residues, 4 chains \(A, B, C, D\)/);
+	it("summarizes a PDB file: atoms, residues, chains", () => {
+		assert.deepEqual(summarizePdb(HELIX), { atoms: 120, residues: 24, chains: ["A"] });
 	});
 
-	it("a failed render is the failure shape with the reason", async () => {
-		const result = await renderMolecule({ title: "X", pdbId: "9ZZZ" }, {
-			outputPath: path.join(tmp, "m", "job7.png"),
-			run: async () => { throw new Error("HTTP 404 for 9ZZZ"); },
+	it("summarizes an mmCIF file: first model only, water skipped, quoted values handled", () => {
+		assert.deepEqual(summarizeCif(TINY_CIF), { atoms: 5, residues: 4, chains: ["A", "B"] });
+		assert.deepEqual(summarizeCif("data_EMPTY\n#\n"), { atoms: 0, residues: 0, chains: [] });
+	});
+
+	it("saves a local structure with the session and records how to draw it", async () => {
+		const chatId = `chat_test_mol_${Date.now().toString(36)}`;
+		after(() => fs.rmSync(chatRendersDir(chatId), { recursive: true, force: true }));
+		const tool = createMoleculeTool({ chatId });
+		const result = await tool.execute("call/weird id:1", { title: "Test helix", path: path.resolve("tests/helpers/helix.pdb"), style: "sticks", color: "spectrum" });
+		const details = result.details as MoleculeDetails;
+		assert.equal(details.file, "mol_callweirdid1.pdb");
+		assert.equal(isRenderFileName(details.file), true);
+		assert.equal(details.format, "pdb");
+		assert.equal(details.style, "sticks");
+		assert.equal(details.color, "spectrum");
+		assert.equal(details.atoms, 120);
+		assert.deepEqual(details.chains, ["A"]);
+		assert.equal(fs.readFileSync(path.join(chatRendersDir(chatId), details.file), "utf-8"), HELIX);
+		const text = (result.content[0] as { text: string }).text;
+		assert.match(text, /120 atoms, 24 residues, 1 chain \(A\)/);
+		assert.match(text, /You have not seen it yourself/);
+	});
+
+	it("downloads a PDB entry as mmCIF and defaults to cartoon by chain", async () => {
+		const chatId = `chat_test_mol2_${Date.now().toString(36)}`;
+		after(() => fs.rmSync(chatRendersDir(chatId), { recursive: true, force: true }));
+		const requested: string[] = [];
+		safeFetchOverride.current = async (url) => { requested.push(url); return new Response(TINY_CIF, { status: 200 }); };
+		try {
+			const result = await createMoleculeTool({ chatId }).execute("call-2", { title: "Tiny", pdbId: "4hhb" });
+			const details = result.details as MoleculeDetails;
+			assert.deepEqual(requested, ["https://files.rcsb.org/download/4HHB.cif"]);
+			assert.equal(details.source, "PDB 4HHB");
+			assert.equal(details.format, "cif");
+			assert.equal(details.style, "cartoon");
+			assert.equal(details.color, "chain");
+			assert.deepEqual(details.chains, ["A", "B"]);
+		} finally {
+			safeFetchOverride.current = undefined;
+		}
+	});
+
+	it("an unknown PDB ID or a non-structure file fails the call with a reason", async () => {
+		const tool = createMoleculeTool({ chatId: "chat_test_mol3" });
+		safeFetchOverride.current = async () => new Response("not found", { status: 404 });
+		try {
+			await assert.rejects(tool.execute("c1", { title: "X", pdbId: "9ZZZ" }), /PDB has no entry 9ZZZ/);
+		} finally {
+			safeFetchOverride.current = undefined;
+		}
+		const notStructure = path.join(tmp, "empty.pdb");
+		fs.writeFileSync(notStructure, "REMARK nothing here\n");
+		await assert.rejects(tool.execute("c2", { title: "X", path: notStructure }), /no atoms found/);
+		await assert.rejects(tool.execute("c3", { title: "X" }), /exactly one/);
+	});
+
+	it("maps style and colour choices onto viewer styles", () => {
+		assert.deepEqual(moleculeViewSpec("cartoon", "chain"), { atomStyle: { cartoon: { colorscheme: "chain" } } });
+		assert.deepEqual(moleculeViewSpec("cartoon", "spectrum"), { atomStyle: { cartoon: { color: "spectrum" } } });
+		assert.deepEqual(moleculeViewSpec("sticks", "spectrum", { min: 5, max: 90 }), {
+			atomStyle: { stick: { colorscheme: { prop: "resi", gradient: "sinebow", min: 5, max: 90 }, radius: 0.2 } },
 		});
-		assert.equal(result.file, "");
-		assert.equal(result.notes, "FAILED: HTTP 404 for 9ZZZ");
+		assert.deepEqual(moleculeViewSpec("spheres", "plddt").atomStyle.sphere, { colorscheme: { prop: "b", gradient: "roygb", min: 50, max: 90 } });
+		const surface = moleculeViewSpec("surface", "element");
+		assert.deepEqual(surface.surface, { colorscheme: "default", opacity: 0.85 });
+		assert.ok(surface.atomStyle.cartoon, "a faint cartoon sits under the surface");
+		assert.deepEqual(Object.keys(moleculeViewSpec("ball_and_stick", "secondary_structure").atomStyle).sort(), ["sphere", "stick"]);
 	});
 });
 
-describe("real renders (need LH_MANIM_PYTHON / LH_MOLECULE_PYTHON)", () => {
+describe("render environment", () => {
+	it("trimming removes test suites and OpenGL-only packages, and nothing else", async () => {
+		const env = path.join(tmp, "env");
+		const site = path.join(env, "lib", "python3.11", "site-packages");
+		for (const dir of ["scipy/linalg/tests", "numpy/core", "pyglm", "manim/mobject", "networkx/tests"]) fs.mkdirSync(path.join(site, dir), { recursive: true });
+		fs.writeFileSync(path.join(site, "numpy/core/keep.py"), "x = 1\n");
+		await trimEnv(env);
+		assert.equal(fs.existsSync(path.join(site, "scipy/linalg/tests")), false);
+		assert.equal(fs.existsSync(path.join(site, "networkx/tests")), false);
+		assert.equal(fs.existsSync(path.join(site, "pyglm")), false);
+		assert.equal(fs.existsSync(path.join(site, "scipy/linalg")), true);
+		assert.equal(fs.existsSync(path.join(site, "manim/mobject")), true);
+		assert.equal(fs.existsSync(path.join(site, "numpy/core/keep.py")), true);
+	});
+});
+
+describe("real renders (need LH_MANIM_PYTHON)", () => {
 	it("Manim renders a scripted scene end to end", { skip: !process.env.LH_MANIM_PYTHON }, async () => {
 		const out = path.join(tmp, "real", "clip.mp4");
 		const result = await runManimMaker({ title: "Square", brief: "Draw a square." }, {
@@ -243,16 +336,5 @@ describe("real renders (need LH_MANIM_PYTHON / LH_MOLECULE_PYTHON)", () => {
 		assert.equal(await renderer.prepare(() => {}), null);
 		await assert.rejects(renderer.render(SCENE.replace("Square()", "Sqare()"), "preview"), /Sqare/);
 		await renderer.dispose();
-	});
-
-	it("Molecular Nodes renders a local structure file", { skip: !process.env.LH_MOLECULE_PYTHON }, async () => {
-		const out = path.join(tmp, "real", "helix.png");
-		const result = await renderMolecule(
-			{ title: "Test helix", file: path.resolve("tests/helpers/helix.pdb") },
-			{ outputPath: out },
-		);
-		assert.equal(result.file, "helix.png", result.notes);
-		assert.ok(fs.statSync(out).size > 10_000, "a real png was written");
-		assert.match(result.notes ?? "", /120 atoms, 24 residues, 1 chain \(A\)/);
 	});
 });

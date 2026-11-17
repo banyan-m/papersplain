@@ -17,6 +17,7 @@ import type { JobRecord } from "../core/contracts.ts";
 import type { ChatStore, JobStore } from "../core/ports.ts";
 import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
 import { fetchPaperTool } from "./tools/paper-fetch.ts";
+import { createMoleculeTool } from "./tools/molecule.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
 import { proberGraphTools } from "./tools/graph.ts";
@@ -445,7 +446,7 @@ export interface GuideToolContext {
 /**
  * papersplainer: the paper guide's tools. Reading (learner files, the pdf
  * reader, fetch_paper for links), asking (ask_user_question, ungraded), and
- * showing (visual, demo, manim, molecule, show_image). Deliberately NO quiz,
+ * showing (visual, demo, manim, the molecule viewer, show_image). Deliberately NO quiz,
  * explain, plan or probe tools: paper sessions never grade the learner;
  * quizzes are the teach and practice sessions' job.
  */
@@ -461,6 +462,7 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				grep: grepTool,
 				show_image: createShowImageTool(ctx),
 				fetch_paper: fetchPaperTool,
+				molecule: createMoleculeTool(ctx),
 				...jobTools(jobContext),
 				...renderJobTools(jobContext),
 			},

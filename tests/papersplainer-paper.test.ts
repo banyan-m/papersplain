@@ -1,7 +1,7 @@
 /**
  * papersplainer paper sessions: the "paper" chat kind, the guide agent
  * (walkthrough | free chat), paper links, and one end-to-end turn in which
- * the guide dispatches a structure render that lands in the session.
+ * the guide shows a structure that lands in the session.
  */
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -14,9 +14,9 @@ import { composeInstructions, createGuideAgent, guideModeInstructions } from "..
 import { createGuideTools, createTeacherTools } from "../src/agent/tools.ts";
 import { downloadPaper, paperPdfUrl, resolvePaperOrSourcePath } from "../src/agent/tools/paper-fetch.ts";
 import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
-import { createJobRunner } from "../src/agent/subagents/runner.ts";
 import { chatRendersDir } from "../src/agent/subagents/render-env.ts";
-import { isSubagentFailure, type MoleculeResult, type SteerMessage } from "../src/core/contracts.ts";
+import type { MoleculeDetails } from "../src/core/contracts.ts";
+import { projectView } from "../src/core/view.ts";
 import { isValidSegmentPath } from "../src/core/prompt-segments.ts";
 import { listSourceSegments } from "../src/agent/prompt-segments.ts";
 import { handleChatRequest } from "../src/server/chat-handler.ts";
@@ -186,22 +186,16 @@ describe("paper links", () => {
 	});
 });
 
-describe("a paper turn end to end (real render needs LH_MOLECULE_PYTHON)", () => {
-	it("the guide dispatches a structure render; the image lands in the session and is served", { skip: !process.env.LH_MOLECULE_PYTHON }, async () => {
+describe("a paper turn end to end", () => {
+	it("the guide shows a structure; the file is saved with the session, recorded on the tool part, and served", async () => {
 		const chat = chatStore.createChat("Test: paper turn", "paper", "walkthrough");
 		createdChats.push(chat.id);
 		chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
 		const structure = path.resolve("tests/helpers/helix.pdb");
 
-		const steers: SteerMessage[] = [];
-		const runner = createJobRunner({
-			chatStore,
-			jobStore,
-			deliver: async (steer) => { steers.push(steer); },
-		});
 		const guide = scriptedModel([
-			{ toolCalls: [{ toolCallId: "call-m1", toolName: "molecule", input: { title: "Test helix", path: structure, style: "cartoon" } }] },
-			{ text: "The structure is rendering. This section describes a single alpha helix (p. 2)." },
+			{ toolCalls: [{ toolCallId: "call-m1", toolName: "molecule", input: { title: "Test helix", path: structure, style: "cartoon", color: "spectrum" } }] },
+			{ text: "This section describes a single alpha helix of 24 residues (p. 2)." },
 		]);
 
 		const ack = await handleChatRequest(
@@ -212,7 +206,7 @@ describe("a paper turn end to end (real render needs LH_MOLECULE_PYTHON)", () =>
 			}),
 			(opts) =>
 				createGuideAgent(
-					{ chatId: chat.id, chatStore, jobStore, spawn: (job, input) => void runner.runJob(job.id, input) },
+					{ chatId: chat.id, chatStore, jobStore, spawn: () => assert.fail("the molecule tool must not start a background job") },
 					"walkthrough",
 					{ engine: guide, messages: opts.messages },
 				),
@@ -220,32 +214,29 @@ describe("a paper turn end to end (real render needs LH_MOLECULE_PYTHON)", () =>
 		if (ack.status !== 200) assert.fail(`expected 200, got ${ack.status}: ${await ack.text()}`);
 		const handle = runningTurn(chat.id);
 		if (handle) await new Response(handle.subscribe()).text();
+		await waitFor(() => !runningTurn(chat.id), 10_000, "the turn to settle");
 
-		const job = jobStore.findJobByToolCallId(chat.id, "call-m1");
-		assert.ok(job, "the molecule call created a job");
-		createdJobs.push(job.id);
-		assert.equal(job.kind, "molecule");
-		await waitFor(() => jobStore.getJob(job.id)!.status !== "running", 120_000, "the structure render");
+		const view = projectView(chatStore.getChat(chat.id)!.messages);
+		const part = view.flatMap((m) => m.parts).find((p) => p.type === "tool-molecule") as { state: string; output: unknown } | undefined;
+		assert.ok(part, "the transcript carries the molecule tool part");
+		assert.equal(part.state, "output-available");
+		const details = part.output as MoleculeDetails;
+		assert.equal(details.file, "mol_call-m1.pdb");
+		assert.equal(details.style, "cartoon");
+		assert.equal(details.color, "spectrum");
+		assert.equal(details.residues, 24);
+		assert.equal(jobStore.findJobByToolCallId(chat.id, "call-m1"), null, "no background job");
 
-		const done = jobStore.getJob(job.id)!;
-		assert.equal(done.status, "done", done.error);
-		const result = done.result as MoleculeResult;
-		assert.equal(isSubagentFailure("molecule", result), false);
-		assert.equal(result.file, `${job.id}.png`);
-		assert.match(result.notes ?? "", /120 atoms, 24 residues/);
-		assert.equal(steers.length, 1, "the result is handed to the session");
-		assert.equal(done.usage, undefined, "a model-free render records no model usage");
-
-		const served = await getRender(new Request("http://test/render"), { params: Promise.resolve({ id: chat.id, file: result.file }) });
+		const served = await getRender(new Request("http://test/render"), { params: Promise.resolve({ id: chat.id, file: details.file }) });
 		assert.equal(served.status, 200);
-		assert.equal(served.headers.get("content-type"), "image/png");
-		const bytes = Buffer.from(await served.arrayBuffer());
-		assert.equal(bytes.subarray(1, 4).toString("latin1"), "PNG");
+		assert.match(served.headers.get("content-type") ?? "", /^text\/plain/);
+		const body = await served.text();
+		assert.match(body, /^ATOM/);
 
-		const ranged = await getRender(new Request("http://test/render", { headers: { range: "bytes=0-7" } }), { params: Promise.resolve({ id: chat.id, file: result.file }) });
+		const ranged = await getRender(new Request("http://test/render", { headers: { range: "bytes=0-3" } }), { params: Promise.resolve({ id: chat.id, file: details.file }) });
 		assert.equal(ranged.status, 206);
-		assert.equal(ranged.headers.get("content-range"), `bytes 0-7/${bytes.length}`);
-		assert.equal((await ranged.arrayBuffer()).byteLength, 8);
+		assert.equal(await ranged.text(), "ATOM");
+		assert.equal(ranged.headers.get("content-range"), `bytes 0-3/${Buffer.byteLength(body)}`);
 	});
 
 	it("the renders route refuses path tricks and unknown sessions", async () => {

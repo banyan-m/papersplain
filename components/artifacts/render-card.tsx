@@ -4,23 +4,21 @@ import { useContext } from "react";
 import { DownloadIcon } from "lucide-react";
 import { ChatActionsContext } from "@/components/chat";
 import { DispatchCard } from "@/components/artifacts/dispatch-card";
-import { isRenderFileName, type ArtifactPartProps, type ManimResult, type MoleculeResult } from "@/src/core";
+import { isRenderFileName, MOLECULE_COLORS, MOLECULE_STYLES, type ArtifactPartProps, type ManimResult, type MoleculeDetails } from "@/src/core";
+import { MoleculeViewer } from "@/components/artifacts/molecule-viewer";
+import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 
 /**
- * papersplainer: the render-job cards. The dispatch side is the shared
- * DispatchCard; the delivered side is the rendered file itself (a Manim
- * clip or a Molecular Nodes image), streamed from the session's renders
- * route. Document material, like figures: no card chrome.
+ * papersplainer: the animation and structure cards. A Manim clip is a
+ * background job (shared DispatchCard, then the video). A structure is an
+ * instant tool result shown in an interactive 3D viewer. Both load their
+ * file from the session's renders route. Document material, like figures:
+ * no card chrome.
  */
 
 export function ManimCard({ part }: ArtifactPartProps) {
 	if (part.state !== "output-available") return null;
 	return <DispatchCard toolCallId={part.toolCallId} kind="manim" />;
-}
-
-export function MoleculeCard({ part }: ArtifactPartProps) {
-	if (part.state !== "output-available") return null;
-	return <DispatchCard toolCallId={part.toolCallId} kind="molecule" />;
 }
 
 /** The URL of a session render, or null when the file name is not a render name. */
@@ -89,23 +87,35 @@ export function ManimOutputCard({ output }: { output: unknown }) {
 	);
 }
 
-export function MoleculeOutputCard({ output }: { output: unknown }) {
-	const result = output as MoleculeResult | undefined;
+/** True when a tool part's output is a usable molecule record. */
+export function isMoleculeDetails(value: unknown): value is MoleculeDetails {
+	const d = value as Partial<MoleculeDetails> | null;
+	return typeof d === "object" && d !== null && typeof d.title === "string" && typeof d.file === "string" && isRenderFileName(d.file) &&
+		(d.format === "pdb" || d.format === "cif") && (MOLECULE_STYLES as readonly unknown[]).includes(d.style) &&
+		(MOLECULE_COLORS as readonly unknown[]).includes(d.color);
+}
+
+/** The molecule tool's card: the interactive structure view. The tool is
+ *  instant, so there is no dispatch state; until the result lands the
+ *  ordinary tool-call line shows. */
+export function MoleculeCard({ part }: ArtifactPartProps) {
 	const chatId = useContext(ChatActionsContext)?.chatId;
-	if (!result || typeof result.file !== "string") {
-		return <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Structure render completed, but the result could not be displayed.</div>;
+	if (part.state !== "output-available") return <ToolCallCard part={part} />;
+	const details = part.output;
+	const url = isMoleculeDetails(details) ? renderFileUrl(chatId, details.file) : null;
+	if (!isMoleculeDetails(details) || !url) {
+		return <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">Structure shown, but it could not be displayed.</div>;
 	}
-	if (result.file.length === 0) {
-		return <FailedCard label="Structure" testId="molecule-card-failed" notes={result.notes} fallback="The structure could not be rendered." />;
-	}
-	const url = renderFileUrl(chatId, result.file);
-	if (!url) return <div className="my-4 text-sm text-muted-foreground" role="status">Structure image unavailable.</div>;
+	const chains = `${details.chains.length} chain${details.chains.length === 1 ? "" : "s"}`;
 	return (
 		<figure className="my-4 w-full" data-testid="molecule-card">
-			{/* A session-owned render served by the app; no Next image optimization. */}
-			{/* eslint-disable-next-line @next/next/no-img-element */}
-			<img src={url} alt={result.title} className="block h-auto w-full rounded-lg" draggable={false} data-testid="molecule-image" />
-			<Caption label="Structure" title={`${result.title}${result.source ? ` · ${result.source}` : ""}`} href={url} download={result.file} />
+			<MoleculeViewer url={url} format={details.format} style={details.style} color={details.color} label={details.title} />
+			<Caption
+				label="Structure"
+				title={`${details.title} · ${details.source} · ${details.residues} residues, ${chains} · drag to rotate, scroll to zoom`}
+				href={url}
+				download={details.file}
+			/>
 		</figure>
 	);
 }

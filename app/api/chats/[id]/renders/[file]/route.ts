@@ -1,6 +1,6 @@
 /**
- * papersplainer: serves a session's rendered files (Manim mp4, Molecular
- * Nodes png) from <data>/renders/<chatId>/. Session-owned files only: the
+ * papersplainer: serves a session's rendered and saved files (Manim mp4,
+ * structure files for the 3D viewer) from <data>/renders/<chatId>/. Session-owned files only: the
  * name must be a plain render file name, never a path. Supports byte
  * ranges so the video element can seek.
  */
@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { isRenderFileName } from "@/src/core";
 import { chatRendersDir, getChat } from "@/src/server";
 
-const TYPES: Record<string, string> = { ".mp4": "video/mp4", ".png": "image/png" };
+const TYPES: Record<string, string> = { ".mp4": "video/mp4", ".png": "image/png", ".pdb": "text/plain; charset=utf-8", ".cif": "text/plain; charset=utf-8" };
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string; file: string }> }): Promise<Response> {
 	const { id, file } = await params;

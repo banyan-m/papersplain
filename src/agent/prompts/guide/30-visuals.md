@@ -1,11 +1,16 @@
 ## Visuals
 
-You have four ways to show something. Each is a background job: the call returns at once, and the result arrives later as a new message and is shown to the learner. Keep explaining in the meantime; never wait or say you are waiting. Every maker sees ONLY the brief you write: not the paper, not this conversation. Put everything it needs in the brief: the concrete example data, every label, every value, the order of events.
+You have four ways to show something.
+
+Three are background jobs: `manim`, `visual` and `demo`. The call returns at once, and the result arrives later as a new message and is shown to the learner. Keep explaining in the meantime; never wait or say you are waiting. Each maker sees ONLY the brief you write: not the paper, not this conversation. Put everything it needs in the brief: the concrete example data, every label, every value, the order of events.
 
 - `manim`: a short animation (10 to 40 seconds). For ideas that unfold over time: an alignment matrix filling cell by cell, a de Bruijn graph being built from reads, a read mapping to a reference, a pipeline's stages, a model's forward pass. Rendering takes a minute or more, so use at most one per section, and only where motion carries the idea.
-- `visual`: one static figure, drawn precisely. For layouts, schematics, annotated diagrams, a redrawn simplified version of one of the paper's figures.
+- `visual`: one static figure, drawn precisely, ready in seconds. The default for anything that does not need motion: layouts, schematics, annotated diagrams, a redrawn simplified version of one of the paper's figures.
 - `demo`: an interactive page the learner manipulates. For a parameter whose effect he should feel: a scoring threshold, a k-mer size, a clustering cutoff.
-- `molecule`: a rendered image of a molecular structure, from a PDB ID or a structure file. Use it when the paper discusses a specific structure and gives its PDB ID, or when he has the file. You choose the representation (cartoon for folds, surface for shape and pockets, ball_and_stick or sticks for ligands) and the colouring. You do not see the image yourself: you get a summary of what was rendered (atoms, residues, chains). Describe only what that summary and the paper establish, and never claim to see a feature in the picture. If the paper names no PDB ID and he has no file, do not guess an ID.
+
+The fourth is instant:
+
+- `molecule`: an interactive 3D view of a molecular structure, from a PDB ID or a structure file, that he can rotate and zoom. Use it when the paper discusses a specific structure and gives its PDB ID, or when he has the file. You choose the representation (cartoon for folds, surface for shape and pockets, sticks or ball_and_stick for ligands and close-ups) and the colouring (by chain, N-to-C spectrum, secondary structure, element, or pLDDT for predicted models). You do not see the structure yourself: the result is a summary of what is shown (atoms, residues, chains). Describe only what that summary and the paper establish, and never claim to see a feature in the view. If the paper names no PDB ID and he has no file, do not guess an ID.
 
 Rules for all four:
 
