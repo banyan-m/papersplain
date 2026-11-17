@@ -13,7 +13,7 @@ import { newHandoffMessage } from "../native-messages.ts";
 
 // ─── Async sub-agent jobs (docs/archive/vision.md §2.5; docs/archive/plan.md Wave 0 protocol) ────────────
 
-export type BuiltinJobKind = "research" | "demo" | "visual" | "pdf";
+export type BuiltinJobKind = "research" | "demo" | "visual" | "pdf" | "manim" | "molecule";
 export type JobKind = BuiltinJobKind | "plugin";
 export function isBuiltinJobKind(kind: JobKind): kind is BuiltinJobKind {
 	return kind !== "plugin";
@@ -28,7 +28,7 @@ export interface PluginJobMetadata {
 	input?: unknown;
 	label?: string;
 }
-export type JobResult = ResearchResult | DemoResult | VisualResult | PdfResult | PluginBackgroundResult;
+export type JobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult | MoleculeResult | PluginBackgroundResult;
 export type JobStatus = "running" | "done" | "error";
 
 export interface JobRecord {
@@ -255,6 +255,55 @@ export interface VisualResult {
 	image?: { path: string; snapshotId: string };
 }
 
+/** papersplainer: a Manim animation rendered by the manim-maker worker. */
+export interface ManimToolInput {
+	title: string;
+	/** Precise brief for ONE short animation: what moves, in what order, with which labels. */
+	brief: string;
+}
+
+export interface ManimResult {
+	title: string;
+	/** File name of the rendered mp4 under the session's renders folder
+	 *  (served by /api/chats/<id>/renders/<file>). Empty on failure. */
+	file: string;
+	/** Clip length in seconds, when known. */
+	durationSec?: number;
+	notes?: string;
+}
+
+/** Molecular Nodes representation styles the molecule job accepts. */
+export const MOLECULE_STYLES = ["cartoon", "ribbon", "surface", "spheres", "ball_and_stick", "sticks"] as const;
+export type MoleculeStyle = (typeof MOLECULE_STYLES)[number];
+export const MOLECULE_COLORS = ["common", "plddt"] as const;
+export type MoleculeColor = (typeof MOLECULE_COLORS)[number];
+
+/** papersplainer: one still image of a molecular structure (Molecular Nodes).
+ *  Exactly one of pdbId / path names the structure. */
+export interface MoleculeToolInput {
+	title: string;
+	/** A 4-character PDB ID, downloaded from RCSB. */
+	pdbId?: string;
+	/** A structure file on the learner's computer (.pdb, .cif, .bcif). */
+	path?: string;
+	style?: MoleculeStyle;
+	color?: MoleculeColor;
+}
+
+export interface MoleculeResult {
+	title: string;
+	/** File name of the rendered png under the session's renders folder. Empty on failure. */
+	file: string;
+	/** What was rendered: "PDB 4HHB" or the file path. */
+	source: string;
+	notes?: string;
+}
+
+/** True for a safe render file name (no path separators, known extension). */
+export function isRenderFileName(name: string): boolean {
+	return /^[A-Za-z0-9_-]{1,80}\.(mp4|png)$/.test(name);
+}
+
 /** The pdf-reader (sources v0, 2026-09): reads a learner-provided PDF on
  *  the teacher's behalf — triage, targeted extraction, look-at-the-page
  *  renders inside its own loop — and returns a text brief with page
@@ -364,6 +413,10 @@ export function isSubagentFailure(
 		const r = result as PdfResult;
 		return /^PDF failed:/i.test(r.brief);
 	}
+	if (kind === "manim" || kind === "molecule") {
+		const r = result as ManimResult | MoleculeResult;
+		return typeof r.file !== "string" || r.file.length === 0;
+	}
 	const r = result as VisualResult;
 	return typeof r.svg !== "string" || r.svg.length === 0;
 }
@@ -380,6 +433,10 @@ function steerText(kind: JobKind, result: JobResult): string {
 			}. Fall back to explaining in prose; if the brief was the problem, re-call demo with a tighter one.`;
 		if (kind === "pdf")
 			return `${(result as PdfResult).brief}\n\nContinue with what you can establish from the session and flag the gap to the learner.`;
+		if (kind === "manim")
+			return `The animation "${(result as ManimResult).title}" could not be rendered: ${(result as ManimResult).notes ?? "unknown reason"}. Fall back to prose or a static visual; if the brief was the problem, re-call manim with a tighter one.`;
+		if (kind === "molecule")
+			return `The structure image "${(result as MoleculeResult).title}" could not be rendered: ${(result as MoleculeResult).notes ?? "unknown reason"}. Tell the learner plainly, and continue in prose; re-call molecule only if the source was wrong.`;
 		return `The figure could not be made: ${(result as VisualResult).notes ?? "unknown reason"}. Fall back to prose or mermaid, or re-call visual with a tighter brief.`;
 	}
 	if (kind === "research")
@@ -390,6 +447,14 @@ function steerText(kind: JobKind, result: JobResult): string {
 		return `The demo "${(result as DemoResult).title}" is built, headlessly tested, and rendered in the lesson. Builder notes: ${
 			(result as DemoResult).notes ?? "(none)"
 		}.\nTeach with it — reference its controls by name and point the learner at what to try.`;
+	if (kind === "manim")
+		return `The animation "${(result as ManimResult).title}" is rendered, checked frame by frame by its maker, and playing in the session. Maker notes: ${
+			(result as ManimResult).notes ?? "(none)"
+		}.\nExplain with it: tell the learner what to watch for.`;
+	if (kind === "molecule")
+		return `The structure image "${(result as MoleculeResult).title}" (${(result as MoleculeResult).source}) is rendered and shown in the session. Render notes: ${
+			(result as MoleculeResult).notes ?? "(none)"
+		}.\nYou have not seen the image yourself: describe only what the notes and the paper establish.`;
 	if ((result as VisualResult).image)
 		return `The annotated image is drawn, verified by inspection, and rendered in the lesson. Maker notes: ${
 			(result as VisualResult).notes ?? "(none)"
@@ -465,6 +530,10 @@ function abortText(kind: JobKind): string {
 		return "The demo job was aborted by the learner — no demo is coming. Acknowledge it in one line and teach the topic in prose instead (a re-dispatch is fine if the learner wants it).";
 	if (kind === "pdf")
 		return "The PDF reading job was aborted by the learner — no brief is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).";
+	if (kind === "manim")
+		return "The animation job was aborted by the learner — no animation is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).";
+	if (kind === "molecule")
+		return "The structure render was aborted by the learner — no image is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).";
 	return "The figure job was aborted by the learner — no figure is coming. Acknowledge it in one line and teach without it (a re-dispatch is fine if the learner wants it).";
 }
 

@@ -5,6 +5,8 @@ import type { JobRecord } from "../../core/contracts.ts";
 import type { JobStore } from "../../core/ports.ts";
 import { checkLearnerImage } from "./learner-image.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
+import { MOLECULE_COLORS, MOLECULE_STYLES } from "../../core/contracts.ts";
+import { moleculeInputProblem } from "../subagents/molecule-render.ts";
 
 /**
  * Async sub-agent job tools (vision §2.5; W2/W6 kinds + the pi-model
@@ -24,7 +26,7 @@ export interface JobToolContext {
 	/** Fire the background runner for a fresh job — fire-and-forget. The
 	 *  input rides along because the spawn happens MID-STREAM, before
 	 *  onFinish persists the tool part — a transcript scan would race it. */
-	spawn: (job: JobRecord, input: ResearchInput | DemoInput | VisualInput | PdfInput) => void;
+	spawn: (job: JobRecord, input: JobInput) => void;
 	/** Search-provider availability, retained for existing composition seams.
 	 *  Research dispatch does not depend on it: web_fetch is keyless and
 	 *  web_search reports a missing provider as a recoverable tool result. */
@@ -76,6 +78,28 @@ export const pdfInputSchema = Type.Object({
 	}),
 });
 
+export const manimInputSchema = Type.Object({
+	title: Type.String({ description: "Short title for the animation card, e.g. 'Filling the Smith-Waterman matrix'." }),
+	brief: Type.String({
+		description:
+			"Precise brief for ONE short animation (10 to 40 seconds): what is on screen, what moves or changes, in what order, " +
+			"and every label and value exactly as it must appear. The maker sees NOTHING else: not the paper, not the conversation. " +
+			"Include the concrete example data (sequences, matrices, numbers) the animation should use.",
+	}),
+});
+
+export const moleculeInputSchema = Type.Object({
+	title: Type.String({ description: "Short title for the image card, e.g. 'Haemoglobin tetramer (4HHB)'." }),
+	pdbId: Type.Optional(Type.String({ description: "A 4-character PDB ID named in the paper, e.g. 4HHB. Give this OR path, never both." })),
+	path: Type.Optional(Type.String({ description: "Path to a structure file on the learner's computer (.pdb, .cif, .bcif). Give this OR pdbId." })),
+	style: Type.Optional(Type.Union(MOLECULE_STYLES.map((s) => Type.Literal(s)), {
+		description: "Representation. cartoon (default) for folds and secondary structure; surface for shape and pockets; ball_and_stick or sticks for small molecules and close-ups; spheres for packing.",
+	})),
+	color: Type.Optional(Type.Union(MOLECULE_COLORS.map((c) => Type.Literal(c)), {
+		description: "common (default): by element, with a distinct carbon colour per chain. plddt: AlphaFold confidence, only for predicted models.",
+	})),
+});
+
 /**
  * The per-call dispatch: create the job (idempotent by toolCallId), fire the
  * runner, and return the ack. Shared by all three tools — only kind differs.
@@ -85,7 +109,7 @@ function dispatch(
 	kind: JobRecord["kind"],
 	toolCallId: string,
 	ack: string,
-	input: ResearchInput | DemoInput | VisualInput | PdfInput,
+	input: JobInput,
 ): string {
 	const existing = ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId);
 	const job = existing ?? ctx.jobStore.createJob({ kind, chatId: ctx.chatId, toolCallId, input });
@@ -105,6 +129,24 @@ const VISUAL_ACK =
 const PDF_ACK =
 	"This call is fire-and-forget: continue your turn and keep teaching — do not wait, poll, or mention waiting. " +
 	"The document brief arrives as a new message when ready; weave it into the lesson and cite its pages.";
+
+const MANIM_ACK =
+	"This call is fire-and-forget: continue your turn; do not wait, poll, or mention waiting. " +
+	"The rendered animation arrives as a new message when ready and plays in the session; explain with it then.";
+const MOLECULE_ACK =
+	"This call is fire-and-forget: continue your turn; do not wait, poll, or mention waiting. " +
+	"The rendered structure image arrives as a new message when ready and is shown in the session.";
+const MANIM_DESCRIPTION =
+	"Dispatch a background sub-agent that writes ONE short Manim animation, renders it, LOOKS at sampled frames, and revises " +
+	"until it is correct. Use it when the idea unfolds over TIME: an algorithm stepping through data, a pipeline stage by " +
+	"stage, a transformation. For a static figure use visual; for something the learner should manipulate use demo. " +
+	"ASYNC and fire-and-forget: it resolves immediately and the animation arrives later as a new message. " +
+	"Rendering takes a minute or more, so dispatch at most one animation per section.";
+const MOLECULE_DESCRIPTION =
+	"Render ONE still image of a molecular structure with Molecular Nodes (Blender). Use it when the paper discusses a " +
+	"specific structure that has a PDB ID, or the learner has a structure file. You choose the representation and colouring; " +
+	"the whole structure is framed automatically. ASYNC and fire-and-forget: the image arrives later as a new message. " +
+	"You will not see the image yourself, only a summary (atoms, residues, chains).";
 
 const RESEARCH_DESCRIPTION =
 	"Dispatch a background web-research agent: fact verification, current data, or niche specifics you are not certain about. " +
@@ -185,7 +227,42 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 	};
 }
 
+/** papersplainer: the render job tools (animation + structure image). Kept
+ *  out of jobTools so the teach and practice registries stay as they were;
+ *  only the paper guide registers these. */
+export function renderJobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
+	return {
+		manim: {
+			name: "manim",
+			label: "manim",
+			description: MANIM_DESCRIPTION,
+			parameters: manimInputSchema,
+			execute: serverExecute("manim", manimInputSchema, (input, { toolCallId }) => dispatch(ctx, "manim", toolCallId, MANIM_ACK, input)),
+		},
+		molecule: {
+			name: "molecule",
+			label: "molecule",
+			description: MOLECULE_DESCRIPTION,
+			parameters: moleculeInputSchema,
+			// A bad source fails the CALL (no job is created), so the guide
+			// corrects it in the same turn.
+			execute: serverExecute("molecule", moleculeInputSchema, (input, { toolCallId }) => {
+				if (!ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId)) {
+					const problem = moleculeInputProblem(input);
+					if (problem) throw new Error(problem);
+					if (input.path) resolveSourcePath(input.path);
+				}
+				return dispatch(ctx, "molecule", toolCallId, MOLECULE_ACK, input);
+			}),
+		},
+	};
+}
+
 export type ResearchInput = Static<typeof researchInputSchema>;
 export type DemoInput = Static<typeof demoInputSchema>;
 export type VisualInput = Static<typeof visualInputSchema>;
 export type PdfInput = Static<typeof pdfInputSchema>;
+export type ManimInput = Static<typeof manimInputSchema>;
+export type MoleculeInput = Static<typeof moleculeInputSchema>;
+/** Any job tool's dispatch-time input. */
+export type JobInput = ResearchInput | DemoInput | VisualInput | PdfInput | ManimInput | MoleculeInput;
