@@ -9,6 +9,8 @@ import { isTurnRunning } from "./turn-liveness.ts";
 import { clearTurnFailure } from "./turn-runs.ts";
 import { discardChatDeliveries } from "./jobs.ts";
 import { sideChats } from "./side-chat.ts";
+import * as fs from "node:fs";
+import { chatRendersDir } from "../agent/subagents/render-env.ts";
 
 /**
  * Server-side chat entries for the transport layer (app/api/chats*,
@@ -154,6 +156,8 @@ function finishChatRecordDeletion(chatId: string): number {
 		discardChatDeliveries(chatId);
 		clearTurnFailure(chatId);
 		sideChats.stopAll(chatId); // a running side answer has nowhere left to land
+		// papersplainer: the session's rendered animations and images go with it.
+		try { fs.rmSync(chatRendersDir(chatId), { recursive: true, force: true }); } catch { /* a leftover folder is harmless */ }
 	}
 	return jobsRemoved;
 }

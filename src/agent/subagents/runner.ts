@@ -20,7 +20,15 @@ import {
 	type UsageStepLike,
 	type VisualResult,
 	type VisualToolInput,
+	type ManimResult,
+	type ManimToolInput,
+	type MoleculeResult,
+	type MoleculeToolInput,
 } from "../../core/contracts.ts";
+import { runManimMaker } from "./manim-maker.ts";
+import { renderMolecule } from "./molecule-render.ts";
+import { chatRendersDir } from "./render-env.ts";
+import { resolveSourcePath } from "../tools/fs-shared.ts";
 import { registerJobAbort, unregisterJobAbort } from "./aborts.ts";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -65,7 +73,8 @@ export const visualModelOverride: { current?: PiEngine } = {};
 export const pdfModelOverride: { current?: PiEngine } = {};
 
 /** The dispatch-time tool input (from src/agent/tools/jobs.ts schemas). */
-type JobToolInput = ResearchToolInput | DemoToolInput | VisualToolInput | PdfToolInput;
+type JobToolInput = ResearchToolInput | DemoToolInput | VisualToolInput | PdfToolInput | ManimToolInput | MoleculeToolInput;
+type BuiltinJobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult | MoleculeResult;
 
 export interface JobRunnerDeps {
 	chatStore: ChatStore;
@@ -126,7 +135,15 @@ const KIND_ROLE: Record<BuiltinJobKind, ModelRole> = {
 	demo: "demoBuilder",
 	visual: "visualMaker",
 	pdf: "pdfReader",
+	// papersplainer: the animation maker looks at rendered frames, so it
+	// runs on the vision tier like the figure maker. The molecule render
+	// makes no model call (see MODEL_FREE_KINDS); its entry is never read.
+	manim: "visualMaker",
+	molecule: "visualMaker",
 };
+
+/** Kinds whose worker makes no model call: no engine or provider key is needed. */
+const MODEL_FREE_KINDS: ReadonlySet<BuiltinJobKind> = new Set(["molecule"]);
 
 export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	const { chatStore, jobStore, deliver } = deps;
@@ -135,11 +152,11 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	 * then writes through the job store so the poll sees progress). */
 	const usageTotals = new Map<string, JobUsage>();
 
-	function makeLoopContext(jobId: string, engine: PiEngine): LoopContext {
+	function makeLoopContext(jobId: string, engine: PiEngine | undefined): LoopContext {
 		const chatId = jobStore.getJob(jobId)?.chatId;
 		// Provider-qualified stamp: the engine's actual model — the only
 		// thing that ran (BYOK: no config-pin fallback stamps exist).
-		const model = `${engine.model.provider}:${engine.model.id}`;
+		const model = engine ? `${engine.model.provider}:${engine.model.id}` : "none";
 		// Real-kill wiring (2026-09 abort semantics): the controller is what
 		// the abort endpoint fires (agent/subagents/aborts.ts registry); the
 		// signal rides into every model call of the loop.
@@ -183,8 +200,10 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 	const KIND_RUNNERS: Record<
 		BuiltinJobKind,
-		(jobId: string, engine: PiEngine, input: JobToolInput | undefined, loop: LoopContext) => Promise<void>
+		(jobId: string, engine: PiEngine | undefined, input: JobToolInput | undefined, loop: LoopContext) => Promise<void>
 	> = {
+		manim: (jobId, engine, input, loop) => runManimJob(jobId, engine, input, loop),
+		molecule: (jobId, _engine, input, loop) => runMoleculeJob(jobId, input, loop),
 		research: (jobId, engine, input, loop) => runResearchJob(jobId, engine, input, loop),
 		demo: (jobId, engine, input, loop) => runDemoJob(jobId, engine, input, loop),
 		visual: (jobId, engine, input, loop) => runVisualJob(jobId, engine, input, loop),
@@ -220,10 +239,19 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 				| DemoToolInput
 				| VisualToolInput
 				| PdfToolInput
+				| ManimToolInput
+				| MoleculeToolInput
 				| undefined;
 			const pdf = resolved as PdfToolInput | undefined;
-			const failure: ResearchResult | DemoResult | VisualResult | PdfResult =
-				job.kind === "research"
+			const failure: BuiltinJobResult =
+				job.kind === "manim" || job.kind === "molecule"
+					? {
+							title: typeof (resolved as ManimToolInput | undefined)?.title === "string" ? (resolved as ManimToolInput).title : "",
+							file: "",
+							...(job.kind === "molecule" ? { source: "" } : {}),
+							notes: `FAILED: ${reason}`,
+						} as ManimResult | MoleculeResult
+				: job.kind === "research"
 					? { brief: `Research failed: ${reason}`, sources: [] }
 					: job.kind === "demo"
 						? {
@@ -243,6 +271,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 								};
 			await finishJob(jobId, failure);
 		};
+		if (MODEL_FREE_KINDS.has(job.kind)) {
+			try {
+				await run(jobId, undefined, input, makeLoopContext(jobId, undefined));
+			} finally {
+				unregisterJobAbort(jobId);
+			}
+			return;
+		}
 		if (!engine) {
 			const tier = ROLE_SLOT[KIND_ROLE[job.kind]];
 			const envelope = modelsNotConfigured([tier]);
@@ -303,7 +339,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	 * Save the computation outcome and session delivery obligation together.
 	 * Worker liveness ends after cleanup, not after a lesson consumes the result.
 	 */
-	async function finishJob(jobId: string, result: ResearchResult | DemoResult | VisualResult | PdfResult): Promise<void> {
+	async function finishJob(jobId: string, result: BuiltinJobResult): Promise<void> {
 		const job = jobStore.getJob(jobId);
 		if (!job) return;
 		// Aborted mid-run (abortJob flips the record before
@@ -487,6 +523,79 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			const reason = err instanceof Error ? err.message : String(err);
 			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
 			await finishJob(jobId, { svg: "", notes: `FAILED: ${reason}` });
+		}
+	}
+
+	// ─── papersplainer: manim animation + molecule image ─────────────────────
+
+	async function runManimJob(
+		jobId: string,
+		model: PiEngine | undefined,
+		passedInput: JobToolInput | undefined,
+		loop: LoopContext,
+	): Promise<void> {
+		const ctx = jobContext(jobId);
+		if (!ctx) return;
+		const { job } = ctx;
+
+		const input = (passedInput ?? resolveInput(job, passedInput)) as ManimToolInput | undefined;
+		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Animation";
+		const brief = typeof input?.brief === "string" ? input.brief : "";
+
+		try {
+			jobStore.updateJob(jobId, { activity: "preparing animation" });
+			const result = await runManimMaker(
+				{ title, brief },
+				{
+					engine: model,
+					outputPath: path.join(chatRendersDir(job.chatId), `${job.id}.mp4`),
+					abortSignal: loop.abortSignal,
+					chatId: loop.chatId,
+					onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
+					onActivity: (line) => jobStore.updateJob(jobId, { activity: line }),
+				},
+			);
+			if (!result.file && stillRunning(jobId)) jobStore.updateJob(jobId, { error: result.notes ?? "animation failed" });
+			await finishJob(jobId, result);
+		} catch (err) {
+			if (loop.abortSignal.aborted) return;
+			const reason = err instanceof Error ? err.message : String(err);
+			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
+			await finishJob(jobId, { title, file: "", notes: `FAILED: ${reason}` });
+		}
+	}
+
+	async function runMoleculeJob(jobId: string, passedInput: JobToolInput | undefined, loop: LoopContext): Promise<void> {
+		const ctx = jobContext(jobId);
+		if (!ctx) return;
+		const { job } = ctx;
+
+		const input = (passedInput ?? resolveInput(job, passedInput)) as MoleculeToolInput | undefined;
+		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Structure";
+		const pdbId = typeof input?.pdbId === "string" && input.pdbId.trim() ? input.pdbId.trim() : undefined;
+		const rawPath = typeof input?.path === "string" && input.path.trim() ? input.path.trim() : undefined;
+		const source = pdbId ? `PDB ${pdbId.toUpperCase()}` : (rawPath ?? "");
+
+		try {
+			jobStore.updateJob(jobId, { activity: "preparing structure render" });
+			// The file-access boundary is checked again at job start (the
+			// dispatch check may be stale by the time a queued job runs).
+			const file = rawPath ? resolveSourcePath(rawPath) : undefined;
+			const result = await renderMolecule(
+				{ title, pdbId, file, style: input?.style, color: input?.color },
+				{
+					outputPath: path.join(chatRendersDir(job.chatId), `${job.id}.png`),
+					abortSignal: loop.abortSignal,
+					onActivity: (line) => jobStore.updateJob(jobId, { activity: line }),
+				},
+			);
+			if (!result.file && stillRunning(jobId)) jobStore.updateJob(jobId, { error: result.notes ?? "structure render failed" });
+			await finishJob(jobId, result);
+		} catch (err) {
+			if (loop.abortSignal.aborted) return;
+			const reason = err instanceof Error ? err.message : String(err);
+			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
+			await finishJob(jobId, { title, file: "", source, notes: `FAILED: ${reason}` });
 		}
 	}
 

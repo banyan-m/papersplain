@@ -32,6 +32,12 @@ export const PATHS = {
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
 	debug: path.join(/* turbopackIgnore: true */ DATA_ROOT, "debug"),
+	/** papersplainer: rendered animations and structure images, one folder per chat. */
+	renders: path.join(/* turbopackIgnore: true */ DATA_ROOT, "renders"),
+	/** papersplainer: the managed Python environments for Manim and Molecular Nodes. */
+	renderEnv: path.join(/* turbopackIgnore: true */ DATA_ROOT, "render-env"),
+	/** papersplainer: PDFs downloaded from paper links. */
+	papers: path.join(/* turbopackIgnore: true */ DATA_ROOT, "papers"),
 } as const;
 
 // ─── Models ────────────────────────────────────────────────────────────────
