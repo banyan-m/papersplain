@@ -7,7 +7,7 @@ import { isSubagentFailure } from "@/src/core";
 import { DemoOutputCard } from "@/components/artifacts/demo-card";
 import { PdfBriefCard, ResearchBriefCard } from "@/components/artifacts/job-card";
 import { VisualOutputCard } from "@/components/artifacts/visual-card";
-import { ManimOutputCard, MoleculeOutputCard } from "@/components/artifacts/render-card";
+import { ManimOutputCard } from "@/components/artifacts/render-card";
 import { PluginWorkerCard } from "@/components/artifacts/plugin-worker-card";
 import { WorkerResultDetails } from "@/components/artifacts/worker-result-presentation";
 
@@ -76,8 +76,6 @@ export function SubagentSteerCard({ message }: { message: LhViewMessage }) {
 			return <DemoOutputCard output={data.result} messageId={message.id} initialInverted={data.ui?.inverted ?? false} />;
 		case "manim":
 			return <ManimOutputCard output={data.result} />;
-		case "molecule":
-			return <MoleculeOutputCard output={data.result} />;
 		case "visual":
 			return <VisualOutputCard output={data.result} messageId={message.id} initialInverted={data.ui?.inverted ?? false} />;
 	}

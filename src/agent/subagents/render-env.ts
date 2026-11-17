@@ -8,29 +8,28 @@ import { PATHS } from "../../../config.ts";
 /**
  * papersplainer: the managed render environments.
  *
- * Manim and Molecular Nodes each get their own Python virtual environment
- * under <data>/render-env/<kind>, created with uv on first use. Two
- * environments, not one: Blender's `bpy` pins its own dependency versions
- * and a joint install is fragile.
+ * Manim gets its own Python virtual environment under
+ * <data>/render-env/manim, created with uv. The app sets it up on first
+ * launch (see app/api/render-env); a render that arrives before that
+ * finishes waits for the same install. After installing, parts Manim's
+ * Cairo renderer never uses are removed to save disk space (see trimEnv).
  *
  * Overrides (development, tests, or a user who manages Python themselves):
- *   LH_MANIM_PYTHON / LH_MOLECULE_PYTHON  an existing interpreter to use as is
- *   LH_UV                                 the uv executable
+ *   LH_MANIM_PYTHON  an existing interpreter to use as is
+ *   LH_UV            the uv executable
  */
 
-export type RenderEnvKind = "manim" | "molecule";
+export type RenderEnvKind = "manim";
 
 const PACKAGES: Record<RenderEnvKind, string[]> = {
 	manim: ["manim"],
-	molecule: ["molecularnodes[bpy]"],
 };
 const PYTHON_VERSION = "3.11";
 /** Bump to force a reinstall when PACKAGES changes. */
-const ENV_STAMP = "1";
+const ENV_STAMP = "2";
 
 const OVERRIDE_VAR: Record<RenderEnvKind, string> = {
 	manim: "LH_MANIM_PYTHON",
-	molecule: "LH_MOLECULE_PYTHON",
 };
 
 const exe = (name: string): string => (process.platform === "win32" ? `${name}.exe` : name);
@@ -63,7 +62,6 @@ export function renderPython(kind: RenderEnvKind): string | null {
 
 export interface RenderEnvStatus {
 	manim: { ready: boolean; python: string | null; installing: boolean };
-	molecule: { ready: boolean; python: string | null; installing: boolean };
 	/** LaTeX on PATH: needed only for typeset formulas in Manim (MathTex). */
 	latex: boolean;
 	uv: string | null;
@@ -74,7 +72,7 @@ export function renderEnvStatus(): RenderEnvStatus {
 		const python = renderPython(kind);
 		return { ready: python !== null, python, installing: installs.has(kind) };
 	};
-	return { manim: one("manim"), molecule: one("molecule"), latex: latexAvailable(), uv: findUv() };
+	return { manim: one("manim"), latex: latexAvailable(), uv: findUv() };
 }
 
 function onPath(name: string): string | null {
@@ -238,8 +236,51 @@ async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => voi
 	onActivity(`installing ${PACKAGES[kind].join(", ")} (first run, this can take several minutes)`);
 	const pip = await runProcess(uv, ["pip", "install", "--python", venvPython(kind), ...PACKAGES[kind]], { signal, timeoutMs: 30 * 60_000 });
 	if (pip.code !== 0) throw new Error(`installing ${PACKAGES[kind].join(", ")} failed: ${tail(pip.stderr)}`);
+	onActivity("removing unused parts");
+	await trimEnv(dir);
+	const check = await runProcess(venvPython(kind), ["-c", "import manim"], { signal, timeoutMs: 5 * 60_000 });
+	if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
 	await fs.writeFile(readyFile(kind), ENV_STAMP);
 	return venvPython(kind);
+}
+
+/** Packages Manim installs but its Cairo renderer never loads (OpenGL maths). */
+const UNUSED_PACKAGES = ["pyglm", "glm"];
+
+/** Remove what a render never needs: the libraries' own test suites and the
+ *  OpenGL-only packages. Measured on Linux: about 394 MB down to about 325 MB. */
+export async function trimEnv(envDir: string): Promise<void> {
+	const sitePackages = await findSitePackages(envDir);
+	if (!sitePackages) return;
+	for (const name of UNUSED_PACKAGES) await fs.rm(path.join(sitePackages, name), { recursive: true, force: true });
+	const walk = async (dir: string, depth: number): Promise<void> => {
+		let entries: fsSync.Dirent[];
+		try {
+			entries = await fs.readdir(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			if (!entry.isDirectory()) continue;
+			const full = path.join(dir, entry.name);
+			if (entry.name === "tests" || entry.name === "test") await fs.rm(full, { recursive: true, force: true });
+			else if (depth < 6) await walk(full, depth + 1);
+		}
+	};
+	await walk(sitePackages, 0);
+}
+
+async function findSitePackages(envDir: string): Promise<string | null> {
+	const windows = path.join(envDir, "Lib", "site-packages");
+	if (fsSync.existsSync(windows)) return windows;
+	const lib = path.join(envDir, "lib");
+	try {
+		for (const entry of await fs.readdir(lib)) {
+			const candidate = path.join(lib, entry, "site-packages");
+			if (entry.startsWith("python") && fsSync.existsSync(candidate)) return candidate;
+		}
+	} catch { /* no lib folder */ }
+	return null;
 }
 
 export function tail(text: string, chars = 1200): string {

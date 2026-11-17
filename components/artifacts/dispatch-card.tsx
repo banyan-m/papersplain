@@ -25,7 +25,6 @@ const KIND_LABEL: Record<JobKind, string> = {
 	visual: "Figure agent",
 	pdf: "PDF reader",
 	manim: "Animation agent",
-	molecule: "Structure render",
 	plugin: "Plugin worker",
 };
 
