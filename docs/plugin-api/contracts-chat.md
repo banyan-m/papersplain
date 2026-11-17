@@ -13,6 +13,7 @@
 - [ExtractionRunUsage](#extractionrunusage) — supporting declaration
 - [ExtractionStageUsage](#extractionstageusage) — supporting declaration
 - [ImageSnapshot](#imagesnapshot) — supporting declaration
+- [PaperMode](#papermode) — supporting declaration
 - [SideChatAnchor](#sidechatanchor) — supporting declaration
 - [SideChatMessage](#sidechatmessage) — supporting declaration
 - [SideChatThread](#sidechatthread) — supporting declaration
@@ -101,7 +102,7 @@ Practice uses the adaptive-practice agent without teaching extraction or
 graph writes. Reading an absent kind does not require a record migration.
 
 ```ts
-export type ChatKind = "teach" | "practice";
+export type ChatKind = "teach" | "practice" | "paper";
 ```
 
 ## ChatListItem
@@ -158,6 +159,7 @@ export interface ChatRecord {
     messages: LhMessage[];
     imageSnapshots?: Record<string, ImageSnapshot>;
     kind?: ChatKind;
+    paperMode?: PaperMode;
     tree?: PlanTree;
     turns?: TurnUsage[];
     extractions?: ExtractionRunUsage[];
@@ -167,7 +169,7 @@ export interface ChatRecord {
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SideChatThread](contracts-chat.md#sidechatthread), [TurnUsage](contracts-chat.md#turnusage).
+**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PaperMode](contracts-chat.md#papermode), [PlanTree](contracts-plan.md#plantree), [SideChatThread](contracts-chat.md#sidechatthread), [TurnUsage](contracts-chat.md#turnusage).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -178,6 +180,7 @@ export interface ChatRecord {
 - [messages](#chatrecord-messages)
 - [imageSnapshots](#chatrecord-imagesnapshots)
 - [kind](#chatrecord-kind)
+- [paperMode](#chatrecord-papermode)
 - [tree](#chatrecord-tree)
 - [turns](#chatrecord-turns)
 - [extractions](#chatrecord-extractions)
@@ -229,6 +232,14 @@ The session's kind; an absent field reads as teach.
 
 ```ts
 kind?: ChatKind;
+```
+
+### ChatRecord paperMode
+
+Paper sessions only; absent reads as walkthrough.
+
+```ts
+paperMode?: PaperMode;
 ```
 
 ### ChatRecord tree
@@ -623,6 +634,18 @@ width: number;
 
 ```ts
 height: number;
+```
+
+## PaperMode
+
+Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
+
+papersplainer: how a paper session runs. walkthrough = the guide leads,
+section by section, pausing after each; chat = the learner leads and the
+guide answers from the paper.
+
+```ts
+export type PaperMode = "walkthrough" | "chat";
 ```
 
 ## SideChatAnchor
