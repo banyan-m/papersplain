@@ -324,7 +324,10 @@ export function Chat({
 	const submissionMounted = useRef(true);
 	useEffect(() => { submissionMounted.current = true; return () => { submissionMounted.current = false; submissionRunner.dispose(); }; }, [submissionRunner]);
 	useEffect(() => () => submissionRunner.dispose(), [surfaceTarget, submissionRunner]);
-	const inputViewReader = useRef<(() => PluginSessionViewInput) | null>(null) as SessionInputViewReader;
+	// A plain stable object, not useRef: React's development build seals ref
+	// objects, and this reader carries an extra `changed` property (set below),
+	// which made every session page throw during server render under `next dev`.
+	const [inputViewReader] = useState(() => ({ current: null }) as SessionInputViewReader);
 	const refreshPluginActions = useRef<(() => void) | null>(null);
 	const notifyViewChanged = useCallback(() => { if (submissionMounted.current) refreshPluginActions.current?.(); }, []);
 	inputViewReader.changed = notifyViewChanged;
@@ -2514,9 +2517,10 @@ export function DockOverlay({
 	const readingInputRef = useRef<HTMLDivElement>(null);
 	const ownsDock = !!pending || !!pluginQuestion || unreadablePlugin || !!practice;
 	const initialPendingRef = useRef(pendingId);
-	const nativeViewReader = useRef<(() => NativeQuestionViewState) | null>(null) as ViewReaderRef<NativeQuestionViewState>;
-	const practiceViewReader = useRef<(() => string) | null>(null) as ViewReaderRef<string>;
-	const customViewReader = useRef<(() => { available: boolean }) | null>(null) as ViewReaderRef<{ available: boolean }>;
+	// Plain stable objects, not useRef: see the note on inputViewReader above.
+	const [nativeViewReader] = useState(() => ({ current: null }) as ViewReaderRef<NativeQuestionViewState>);
+	const [practiceViewReader] = useState(() => ({ current: null }) as ViewReaderRef<string>);
+	const [customViewReader] = useState(() => ({ current: null }) as ViewReaderRef<{ available: boolean }>);
 	nativeViewReader.changed = practiceViewReader.changed = customViewReader.changed = viewReader?.changed;
 
 	// Teach-question ARRIVAL state, applied during render — BEFORE the
