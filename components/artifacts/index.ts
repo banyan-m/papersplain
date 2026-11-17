@@ -5,6 +5,7 @@ import { JobCard, PdfJobCard } from "@/components/artifacts/job-card";
 import { VisualCard } from "@/components/artifacts/visual-card";
 import { ImageCard } from "@/components/artifacts/image-card";
 import { ManimCard, MoleculeCard } from "@/components/artifacts/render-card";
+import { ToyDataCard } from "@/components/artifacts/toy-data-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { ProblemCard, ConcludeCard } from "@/components/practice-cards";
@@ -33,6 +34,10 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// papersplainer: the render jobs (animation + structure image).
 	manim: ManimCard,
 	molecule: MoleculeCard,
+	// The paper cache: a figure page from the PDF (shown like a learner
+	// image) and the toy dataset job.
+	paper_figure: ImageCard,
+	toy_data: ToyDataCard,
 	// A learner image shown as-is (issue #363): the picture itself, inline.
 	show_image: ImageCard,
 	// The probe conclusion: the assessment belongs to the learner as much as

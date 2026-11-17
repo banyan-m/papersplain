@@ -38,6 +38,8 @@ export const PATHS = {
 	renderEnv: path.join(/* turbopackIgnore: true */ DATA_ROOT, "render-env"),
 	/** papersplainer: PDFs downloaded from paper links. */
 	papers: path.join(/* turbopackIgnore: true */ DATA_ROOT, "papers"),
+	/** papersplainer: per-paper cache (figures from the PDF, toy data), keyed by the PDF's content. */
+	paperCache: path.join(/* turbopackIgnore: true */ DATA_ROOT, "paper-cache"),
 } as const;
 
 // ─── Models ────────────────────────────────────────────────────────────────

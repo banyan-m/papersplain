@@ -87,6 +87,16 @@ export const manimInputSchema = Type.Object({
 	}),
 });
 
+export const toyDataInputSchema = Type.Object({
+	title: Type.String({ description: "Short title for the dataset card, e.g. 'Toy reads, reference and alignments'." }),
+	brief: Type.String({
+		description:
+			"What data the study uses, for a maker that sees NOTHING else: each file type by its real extension (FASTQ, VCF, BAM, .h5ad, …), " +
+			"what one record or row holds, how the files relate to each other, and how the paper's method reads them. " +
+			"Give a tiny concrete example to model the files on. Say which formats matter most if there are many.",
+	}),
+});
+
 /**
  * The per-call dispatch: create the job (idempotent by toolCallId), fire the
  * runner, and return the ack. Shared by all three tools — only kind differs.
@@ -120,6 +130,15 @@ const PDF_ACK =
 const MANIM_ACK =
 	"This call is fire-and-forget: continue your turn; do not wait, poll, or mention waiting. " +
 	"The rendered animation arrives as a new message when ready and plays in the session; explain with it then.";
+const TOY_DATA_ACK =
+	"This call is fire-and-forget: continue your turn; do not wait, poll, or mention waiting. " +
+	"The checked files arrive as a new message with their opening lines; use them in your explanation and your briefs then.";
+const TOY_DATA_DESCRIPTION =
+	"Dispatch a background sub-agent that makes a SMALL TOY DATASET in the study's own file formats: it writes a generator " +
+	"script, runs it, and parses every file back before delivering. Use it ONCE per paper, early, when the paper's method " +
+	"consumes data files: it lets you show the learner the form the data comes in and follow a record through the method. " +
+	"The files are illustrative, never the study's real data. They are kept with the paper, so a later session reuses them, " +
+	"and the visual, manim and demo makers then receive them automatically. ASYNC and fire-and-forget.";
 const MANIM_DESCRIPTION =
 	"Dispatch a background sub-agent that writes ONE short Manim animation, renders it, LOOKS at sampled frames, and revises " +
 	"until it is correct. Use it when the idea unfolds over TIME: an algorithm stepping through data, a pipeline stage by " +
@@ -205,7 +224,7 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 	};
 }
 
-/** papersplainer: the render job tools (the Manim animation). Kept
+/** papersplainer: the paper job tools (the Manim animation, the toy dataset). Kept
  *  out of jobTools so the teach and practice registries stay as they were;
  *  only the paper guide registers these. */
 export function renderJobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
@@ -217,6 +236,13 @@ export function renderJobTools(ctx: JobToolContext): Record<string, AgentTool<an
 			parameters: manimInputSchema,
 			execute: serverExecute("manim", manimInputSchema, (input, { toolCallId }) => dispatch(ctx, "manim", toolCallId, MANIM_ACK, input)),
 		},
+		toy_data: {
+			name: "toy_data",
+			label: "toy_data",
+			description: TOY_DATA_DESCRIPTION,
+			parameters: toyDataInputSchema,
+			execute: serverExecute("toy_data", toyDataInputSchema, (input, { toolCallId }) => dispatch(ctx, "dataset", toolCallId, TOY_DATA_ACK, input)),
+		},
 	};
 }
 
@@ -225,5 +251,6 @@ export type DemoInput = Static<typeof demoInputSchema>;
 export type VisualInput = Static<typeof visualInputSchema>;
 export type PdfInput = Static<typeof pdfInputSchema>;
 export type ManimInput = Static<typeof manimInputSchema>;
+export type ToyDataInput = Static<typeof toyDataInputSchema>;
 /** Any job tool's dispatch-time input. */
-export type JobInput = ResearchInput | DemoInput | VisualInput | PdfInput | ManimInput;
+export type JobInput = ResearchInput | DemoInput | VisualInput | PdfInput | ManimInput | ToyDataInput;

@@ -9,11 +9,12 @@
 import type { CallUsage } from "./chat.ts";
 import type { PluginBackgroundResult } from "../plugin-workers.ts";
 import type { LhMessage, LhMarkerMessage } from "../native-messages.ts";
+import { toyDataContext, type ToyDataFile } from "../paper-cache.ts";
 import { newHandoffMessage } from "../native-messages.ts";
 
 // ─── Async sub-agent jobs (docs/archive/vision.md §2.5; docs/archive/plan.md Wave 0 protocol) ────────────
 
-export type BuiltinJobKind = "research" | "demo" | "visual" | "pdf" | "manim";
+export type BuiltinJobKind = "research" | "demo" | "visual" | "pdf" | "manim" | "dataset";
 export type JobKind = BuiltinJobKind | "plugin";
 export function isBuiltinJobKind(kind: JobKind): kind is BuiltinJobKind {
 	return kind !== "plugin";
@@ -28,7 +29,7 @@ export interface PluginJobMetadata {
 	input?: unknown;
 	label?: string;
 }
-export type JobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult | PluginBackgroundResult;
+export type JobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult | ToyDataResult | PluginBackgroundResult;
 export type JobStatus = "running" | "done" | "error";
 
 export interface JobRecord {
@@ -272,6 +273,24 @@ export interface ManimResult {
 	notes?: string;
 }
 
+/** papersplainer: a small toy dataset in the study's own file formats,
+ *  written by a generator script the toy-data maker authors and runs. */
+export interface ToyDataToolInput {
+	title: string;
+	/** What data the study uses: each file type, what one record holds, and
+	 *  a tiny concrete example to model the toy files on. */
+	brief: string;
+}
+
+export interface ToyDataResult {
+	title: string;
+	/** The files now in the paper's cache. Empty on failure. */
+	files: ToyDataFile[];
+	notes?: string;
+	/** True when an earlier session's dataset for the same paper was reused. */
+	reused?: boolean;
+}
+
 /** papersplainer: how the in-app structure viewer (3Dmol.js) draws a molecule. */
 export const MOLECULE_STYLES = ["cartoon", "surface", "sticks", "ball_and_stick", "spheres"] as const;
 export type MoleculeStyle = (typeof MOLECULE_STYLES)[number];
@@ -413,6 +432,7 @@ export function isSubagentFailure(
 		const r = result as ManimResult;
 		return typeof r.file !== "string" || r.file.length === 0;
 	}
+	if (kind === "dataset") return !Array.isArray((result as ToyDataResult).files) || (result as ToyDataResult).files.length === 0;
 	const r = result as VisualResult;
 	return typeof r.svg !== "string" || r.svg.length === 0;
 }
@@ -431,6 +451,8 @@ function steerText(kind: JobKind, result: JobResult): string {
 			return `${(result as PdfResult).brief}\n\nContinue with what you can establish from the session and flag the gap to the learner.`;
 		if (kind === "manim")
 			return `The animation "${(result as ManimResult).title}" could not be rendered: ${(result as ManimResult).notes ?? "unknown reason"}. Fall back to prose or a static visual; if the brief was the problem, re-call manim with a tighter one.`;
+		if (kind === "dataset")
+			return `The toy dataset "${(result as ToyDataResult).title}" could not be made: ${(result as ToyDataResult).notes ?? "unknown reason"}. Tell the learner plainly and describe the data formats in prose; re-call toy_data only if the brief was the problem.`;
 		return `The figure could not be made: ${(result as VisualResult).notes ?? "unknown reason"}. Fall back to prose or mermaid, or re-call visual with a tighter brief.`;
 	}
 	if (kind === "research")
@@ -445,6 +467,13 @@ function steerText(kind: JobKind, result: JobResult): string {
 		return `The animation "${(result as ManimResult).title}" is rendered, checked frame by frame by its maker, and playing in the session. Maker notes: ${
 			(result as ManimResult).notes ?? "(none)"
 		}.\nExplain with it: tell the learner what to watch for.`;
+	if (kind === "dataset") {
+		const r = result as ToyDataResult;
+		return `The toy dataset "${r.title}" is ${r.reused ? "already in this paper's cache from an earlier session" : "written, parsed back and checked"}, and its file list is shown in the session. ` +
+			`Maker notes: ${r.notes ?? "(none)"}.\n\n${toyDataContext({ title: r.title, files: r.files, createdAt: "" })}\n\n` +
+			"These are illustrative values in the study's formats, never the study's real data: say so when you show them. " +
+			"From now on the visual, manim and demo makers receive these files' names and opening lines automatically, and a Manim scene can read them from data/<name>; refer to files by name in your briefs.";
+	}
 	if ((result as VisualResult).image)
 		return `The annotated image is drawn, verified by inspection, and rendered in the lesson. Maker notes: ${
 			(result as VisualResult).notes ?? "(none)"
@@ -522,6 +551,8 @@ function abortText(kind: JobKind): string {
 		return "The PDF reading job was aborted by the learner — no brief is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).";
 	if (kind === "manim")
 		return "The animation job was aborted by the learner — no animation is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).";
+	if (kind === "dataset")
+		return "The toy dataset job was aborted by the learner — no files are coming. Acknowledge it in one line and continue without them (a re-dispatch is fine if the learner wants it).";
 	return "The figure job was aborted by the learner — no figure is coming. Acknowledge it in one line and teach without it (a re-dispatch is fine if the learner wants it).";
 }
 

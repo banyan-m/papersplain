@@ -18,6 +18,7 @@ import type { ChatStore, JobStore } from "../core/ports.ts";
 import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
 import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
+import { createPaperFigureTool } from "./tools/paper-figure.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
 import { proberGraphTools } from "./tools/graph.ts";
@@ -463,6 +464,7 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				show_image: createShowImageTool(ctx),
 				fetch_paper: fetchPaperTool,
 				molecule: createMoleculeTool(ctx),
+				paper_figure: createPaperFigureTool(ctx),
 				...jobTools(jobContext),
 				...renderJobTools(jobContext),
 			},

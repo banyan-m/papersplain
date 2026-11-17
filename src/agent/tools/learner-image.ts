@@ -70,7 +70,17 @@ async function normalize(bytes: Uint8Array, signal?: AbortSignal): Promise<Resiz
 
 export async function loadLearnerImage(rawPath: string, signal?: AbortSignal): Promise<LearnerImage> {
 	signal?.throwIfAborted();
-	const absolute = await checkLearnerImage(rawPath);
+	return loadImageAt(await checkLearnerImage(rawPath), signal);
+}
+
+/** Load an image the APP wrote (a cached figure page), skipping the
+ *  learner file-access boundary: the path is never model- or user-supplied. */
+export async function loadAppImage(absolute: string, signal?: AbortSignal): Promise<LearnerImage> {
+	signal?.throwIfAborted();
+	return loadImageAt(absolute, signal);
+}
+
+async function loadImageAt(absolute: string, signal?: AbortSignal): Promise<LearnerImage> {
 	const bytes = await readBounded(absolute, signal);
 	const mime = detectSupportedImageMimeType(bytes);
 	if (!mime) throw new Error(`Not a supported image: ${absolute}`);

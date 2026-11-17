@@ -11,6 +11,7 @@ import { discardChatDeliveries } from "./jobs.ts";
 import { sideChats } from "./side-chat.ts";
 import * as fs from "node:fs";
 import { chatRendersDir } from "../agent/subagents/render-env.ts";
+import { forgetChatPaper } from "../agent/subagents/paper-cache-store.ts";
 
 /**
  * Server-side chat entries for the transport layer (app/api/chats*,
@@ -158,6 +159,8 @@ function finishChatRecordDeletion(chatId: string): number {
 		sideChats.stopAll(chatId); // a running side answer has nowhere left to land
 		// papersplainer: the session's rendered animations and images go with it.
 		try { fs.rmSync(chatRendersDir(chatId), { recursive: true, force: true }); } catch { /* a leftover folder is harmless */ }
+		// The paper's shared cache stays (other sessions may use it); only this session's link goes.
+		forgetChatPaper(chatId);
 	}
 	return jobsRemoved;
 }

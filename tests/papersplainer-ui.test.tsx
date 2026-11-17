@@ -14,6 +14,7 @@ import { DraftShell, startDraftSession } from "../components/new-session.tsx";
 import { isMoleculeDetails, ManimOutputCard, MoleculeCard, renderFileUrl } from "../components/artifacts/render-card.tsx";
 import { sectionedSegments } from "../components/settings/agent-section.tsx";
 import { renderEnvBanner } from "../components/render-env-setup.tsx";
+import { ToyDataOutputCard } from "../components/artifacts/toy-data-card.tsx";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
 beforeEach(() => {
@@ -140,5 +141,30 @@ describe("first-launch animation setup", () => {
 		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: true } }), { kind: "installing", step: "starting" });
 		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: false }, errors: { manim: "no network" } }), { kind: "failed", reason: "no network" });
 		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: false } }), { kind: "hidden" });
+	});
+});
+
+describe("toy dataset card", () => {
+	const FILES = [
+		{ name: "toy_reads.fastq", format: "fastq", bytes: 120, checked: true, summary: "5 reads", preview: "@read_1\nACGT\n+\nIIII" },
+		{ name: "signal_fast5_layout.txt", format: "unchecked", bytes: 300, checked: false, summary: "12 lines; format not checked", preview: "Raw signal layout" },
+	];
+
+	it("lists each file with its format, count, opening lines and a download link", () => {
+		const html = inChat(<ToyDataOutputCard output={{ title: "Toy alignment data", files: FILES }} />);
+		assert.match(html, /Not the study&#x27;s real data/);
+		assert.match(html, /toy_reads\.fastq/);
+		assert.match(html, /5 reads/);
+		assert.match(html, /@read_1/);
+		assert.match(html, /href="\/api\/chats\/chat_abc\/paper-data\/toy_reads\.fastq"/);
+		assert.match(html, /12 lines; format not checked · not format-checked/);
+		assert.doesNotMatch(html, /reused from an earlier session/);
+	});
+
+	it("says when the dataset was reused, and shows the reason when it failed", () => {
+		assert.match(inChat(<ToyDataOutputCard output={{ title: "T", files: FILES, reused: true }} />), /reused from an earlier session on this paper/);
+		const failed = inChat(<ToyDataOutputCard output={{ title: "T", files: [], notes: "FAILED: iteration limit" }} />);
+		assert.match(failed, /data-testid="toy-data-card-failed"/);
+		assert.match(failed, /FAILED: iteration limit/);
 	});
 });
