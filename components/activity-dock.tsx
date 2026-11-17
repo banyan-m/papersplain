@@ -316,6 +316,7 @@ const KIND_ICON: Record<JobKind, typeof SearchIcon> = {
 	visual: PenToolIcon,
 	pdf: FileTextIcon, // sources v0 — type-forced entry (JobKind grew "pdf")
 	manim: PlayIcon,
+	dataset: FileTextIcon,
 	plugin: BotIcon,
 };
 
@@ -435,6 +436,8 @@ function ActivityBlobRow({
 						? "Figure maker"
 						: blob.jobKind === "manim"
 							? "Animation maker"
+						: blob.jobKind === "dataset"
+							? "Toy data maker"
 						: blob.jobKind === "pdf"
 							? "PDF reader"
 							: blob.jobKind === "plugin"

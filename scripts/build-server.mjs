@@ -107,6 +107,8 @@ for (const asset of [
 	path.join("src", "agent", "system-prompt.md"),
 	path.join("src", "agent", "prompts", "teacher", "20-teaching.md"),
 	path.join("src", "agent", "prompts", "guide", "00-base.md"),
+	path.join("src", "agent", "subagents", "toy-data", "checkdata.py"),
+	path.join("src", "agent", "subagents", "toy-data", "papertoy.py"),
 	path.join("src", "agent", "prompts", "side-chat", "00-base.md"),
 	path.join("src", "agent", "prompts", "side-chat", "90-style.md"),
 ]) {

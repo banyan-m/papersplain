@@ -63,7 +63,7 @@ export type AgentKind = "prober" | "teacher" | "practice" | "guide";
 export const CONVERSATION_TOOL_NAMES = Object.freeze([
 	...QUESTION_TOOLS, ...TOGGLEABLE_TOOLS, "probe_done", "read", "ls", "find", "grep",
 	"plan_init", "list_sessions", "list_propositions", "problem", "conclude", sendToUserTool.name,
-	"manim", "molecule", "fetch_paper",
+	"manim", "molecule", "fetch_paper", "paper_figure", "toy_data",
 ] as const);
 
 // P2 (2026-09-19): segment discovery + override resolution live in ONE

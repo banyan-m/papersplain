@@ -55,6 +55,8 @@ export interface ManimMakerOptions {
 	renderer?: ManimRenderer;
 	/** Where the delivered mp4 is written (absolute path). */
 	outputPath: string;
+	/** Folder of the paper's toy data files; copied beside the scene as data/ for each render. */
+	dataDir?: string;
 	maxIterations?: number;
 	onActivity?: (line: string) => void;
 	abortSignal?: AbortSignal;
@@ -81,8 +83,10 @@ You write Python for Manim Community Edition. Your three tools:
 Scene requirements:
 - Start with \`from manim import *\` and define exactly one scene: \`class ${MANIM_SCENE_CLASS}(Scene):\` with
   a \`construct(self)\` method. No other scene classes, no \`if __name__\` block, no config changes.
-- Standard library and numpy only. No file, network, or subprocess access, and no external assets
-  (images, SVG files, fonts, sounds).
+- Standard library and numpy only. No network or subprocess access, and no external assets (images, SVG
+  files, fonts, sounds). The one exception for files: when the brief lists example data files, the scene may
+  READ them from the relative folder data/ (for example open("data/reads.fastq")) and should show their real
+  contents instead of retyping them.
 - Length: aim for 10 to 40 seconds. Use self.wait() so each step can be read.
 - Dark default background, large text (font_size 28 or more for labels), at most two accent colors.
 - Keep everything inside the frame (about 14 units wide by 8 high). Nothing may overlap unless intended.
@@ -147,7 +151,7 @@ export async function runManimMaker(input: ManimMakerInput, opts: ManimMakerOpti
 	const brief = input.brief.trim() || "(no brief)";
 	const maxIterations = opts.maxIterations ?? 10;
 	const failed = (reason: string): ManimResult => ({ title, file: "", notes: `FAILED: ${reason}` });
-	const renderer = opts.renderer ?? createManimRenderer();
+	const renderer = opts.renderer ?? createManimRenderer({ dataDir: opts.dataDir });
 
 	try {
 		const unavailable = await renderer.prepare(opts.onActivity ?? (() => {}), opts.abortSignal);
@@ -364,7 +368,7 @@ print(json.dumps({"duration": duration, "frames": result}))
 
 const PREVIEW_FRAMES = 5;
 
-export function createManimRenderer(): ManimRenderer {
+export function createManimRenderer(options: { dataDir?: string } = {}): ManimRenderer {
 	let python: string | null = null;
 	let workDir: string | null = null;
 	let renders = 0;
@@ -386,6 +390,7 @@ export function createManimRenderer(): ManimRenderer {
 			const dir = path.join(workDir, `r${renders++}`);
 			await fs.mkdir(dir, { recursive: true });
 			await fs.writeFile(path.join(dir, "scene.py"), code);
+			if (options.dataDir) await fs.cp(options.dataDir, path.join(dir, "data"), { recursive: true }).catch(() => {});
 			const run = await runProcess(
 				python,
 				["-m", "manim", "render", quality === "final" ? "-qm" : "-ql", "--disable_caching", "--progress_bar", "none",

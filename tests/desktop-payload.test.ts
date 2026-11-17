@@ -65,6 +65,8 @@ function withPayload(test: (fixture: {
 		write(path.join(STANDALONE, PROMPT));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "teacher", "20-teaching.md"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "guide", "00-base.md"));
+		write(path.join(STANDALONE, "src", "agent", "subagents", "toy-data", "checkdata.py"));
+		write(path.join(STANDALONE, "src", "agent", "subagents", "toy-data", "papertoy.py"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "00-base.md"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "90-style.md"));
 		test({ root, write, run: () => spawnSync(process.execPath, [path.join(root, "scripts", "build-server.mjs")], {

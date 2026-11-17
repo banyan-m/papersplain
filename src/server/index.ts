@@ -14,6 +14,7 @@ export { NotesImportError } from "../agent/subagents/extraction.ts";
 export { convertPdf } from "../agent/subagents/pdf-ops.ts";
 export { joinPages } from "../agent/subagents/pdf-markdown.ts";
 export { chatRendersDir, ensureRenderEnv, renderEnvStatus } from "../agent/subagents/render-env.ts";
+export { chatCacheKey, toyDir } from "../agent/subagents/paper-cache-store.ts";
 export * from "./commit-positions.ts";
 export * from "./jobs.ts";
 export { prepareSubmissionImages, prepareSubmissionImageChannels } from "./submission-images.ts";

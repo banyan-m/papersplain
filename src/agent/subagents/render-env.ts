@@ -22,11 +22,12 @@ import { PATHS } from "../../../config.ts";
 export type RenderEnvKind = "manim";
 
 const PACKAGES: Record<RenderEnvKind, string[]> = {
-	manim: ["manim"],
+	// h5py (about 15 MB) lets toy datasets include real HDF5 / AnnData-layout files.
+	manim: ["manim", "h5py"],
 };
 const PYTHON_VERSION = "3.11";
 /** Bump to force a reinstall when PACKAGES changes. */
-const ENV_STAMP = "2";
+const ENV_STAMP = "3";
 
 const OVERRIDE_VAR: Record<RenderEnvKind, string> = {
 	manim: "LH_MANIM_PYTHON",
@@ -112,7 +113,7 @@ export interface ProcessResult {
 export function runProcess(
 	command: string,
 	args: string[],
-	opts: { cwd?: string; signal?: AbortSignal; timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+	opts: { cwd?: string; signal?: AbortSignal; timeoutMs?: number; env?: Record<string, string> } = {},
 ): Promise<ProcessResult> {
 	return new Promise((resolve, reject) => {
 		opts.signal?.throwIfAborted();
@@ -239,7 +240,7 @@ async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => voi
 	if (pip.code !== 0) throw new Error(`installing ${PACKAGES[kind].join(", ")} failed: ${tail(pip.stderr)}`);
 	onActivity("removing unused parts");
 	await trimEnv(dir);
-	const check = await runProcess(venvPython(kind), ["-c", "import manim"], { signal, timeoutMs: 5 * 60_000 });
+	const check = await runProcess(venvPython(kind), ["-c", "import manim, h5py"], { signal, timeoutMs: 5 * 60_000 });
 	if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
 	await fs.writeFile(readyFile(kind), ENV_STAMP);
 	// The installer is only needed again for a reinstall, and is quick to fetch.

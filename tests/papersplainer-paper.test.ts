@@ -100,7 +100,7 @@ describe("paper session records", () => {
 describe("the guide's prompt and tools", () => {
 	it("composes its own base plus the allowed shared fragments, never the quiz mechanics", () => {
 		const paths = listSourceSegments("guide").map((s) => s.path);
-		assert.deepEqual(paths.filter((p) => p.startsWith("guide/")), ["guide/00-base.md", "guide/10-reading.md", "guide/20-explaining.md", "guide/30-visuals.md"]);
+		assert.deepEqual(paths.filter((p) => p.startsWith("guide/")), ["guide/00-base.md", "guide/10-reading.md", "guide/20-explaining.md", "guide/25-paper-material.md", "guide/30-visuals.md"]);
 		assert.ok(!paths.includes("system-prompt.md"), "the teaching base stays out");
 		assert.ok(!paths.includes("shared/20-question-tools.md"), "quiz mechanics stay out");
 		assert.ok(!paths.includes("shared/25-confidence.md"));
@@ -119,7 +119,7 @@ describe("the guide's prompt and tools", () => {
 	it("registers reading and showing tools, and no graded or planning tools", () => {
 		const ctx = { chatId: "c", chatStore, jobStore, spawn: () => {} };
 		const names = Object.keys(createGuideTools(ctx)).sort();
-		assert.deepEqual(names, ["ask_user_question", "demo", "fetch_paper", "find", "grep", "ls", "manim", "molecule", "pdf", "read", "research", "show_image", "visual"]);
+		assert.deepEqual(names, ["ask_user_question", "demo", "fetch_paper", "find", "grep", "ls", "manim", "molecule", "paper_figure", "pdf", "read", "research", "show_image", "toy_data", "visual"]);
 		for (const graded of ["quiz", "explain", "probe", "recall", "plan_init", "probe_done", "problem", "conclude"]) {
 			assert.ok(!names.includes(graded), `${graded} must not be in a paper session`);
 		}
@@ -135,6 +135,8 @@ describe("the guide's prompt and tools", () => {
 		assert.ok(!names.includes("manim"));
 		assert.ok(!names.includes("molecule"));
 		assert.ok(!names.includes("fetch_paper"));
+		assert.ok(!names.includes("toy_data"));
+		assert.ok(!names.includes("paper_figure"));
 	});
 });
 

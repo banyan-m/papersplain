@@ -22,10 +22,17 @@ import {
 	type VisualToolInput,
 	type ManimResult,
 	type ManimToolInput,
+	type ToyDataResult,
+	type ToyDataToolInput,
 } from "../../core/contracts.ts";
+import { toyDataContext } from "../../core/paper-cache.ts";
+import { runToyDataMaker } from "./toy-data-maker.ts";
+import { chatCacheKey, chatPaperKey, chatToyData, ensurePaperFigures, paperKeyForFile, readManifest, setChatPaper, toyDir, updateManifest } from "./paper-cache-store.ts";
+import { resolvePaperOrSourcePath } from "../tools/paper-fetch.ts";
 import { runManimMaker } from "./manim-maker.ts";
 import { chatRendersDir } from "./render-env.ts";
 import { registerJobAbort, unregisterJobAbort } from "./aborts.ts";
+import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -69,8 +76,8 @@ export const visualModelOverride: { current?: PiEngine } = {};
 export const pdfModelOverride: { current?: PiEngine } = {};
 
 /** The dispatch-time tool input (from src/agent/tools/jobs.ts schemas). */
-type JobToolInput = ResearchToolInput | DemoToolInput | VisualToolInput | PdfToolInput | ManimToolInput;
-type BuiltinJobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult;
+type JobToolInput = ResearchToolInput | DemoToolInput | VisualToolInput | PdfToolInput | ManimToolInput | ToyDataToolInput;
+type BuiltinJobResult = ResearchResult | DemoResult | VisualResult | PdfResult | ManimResult | ToyDataResult;
 
 export interface JobRunnerDeps {
 	chatStore: ChatStore;
@@ -134,6 +141,8 @@ const KIND_ROLE: Record<BuiltinJobKind, ModelRole> = {
 	// papersplainer: the animation maker looks at rendered frames, so it
 	// runs on the vision tier like the figure maker.
 	manim: "visualMaker",
+	// The toy-data maker writes and fixes a script from text reports: no vision needed.
+	dataset: "demoBuilder",
 };
 
 export function createJobRunner(deps: JobRunnerDeps): JobRunner {
@@ -194,6 +203,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		(jobId: string, engine: PiEngine, input: JobToolInput | undefined, loop: LoopContext) => Promise<void>
 	> = {
 		manim: (jobId, engine, input, loop) => runManimJob(jobId, engine, input, loop),
+		dataset: (jobId, engine, input, loop) => runDatasetJob(jobId, engine, input, loop),
 		research: (jobId, engine, input, loop) => runResearchJob(jobId, engine, input, loop),
 		demo: (jobId, engine, input, loop) => runDemoJob(jobId, engine, input, loop),
 		visual: (jobId, engine, input, loop) => runVisualJob(jobId, engine, input, loop),
@@ -213,6 +223,15 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			jobStore.updateJob(jobId, { status: "error", error: `unknown kind ${job.kind}`, activity: "failed" });
 			return;
 		}
+		// A paper's toy dataset is made once and shared by every session on that
+		// paper: reuse needs no model, so it is answered before the engine gates.
+		if (job.kind === "dataset") {
+			const existing = chatToyData(job.chatId);
+			if (existing && existing.files.length > 0) {
+				await finishJob(jobId, { title: existing.title, files: existing.files, notes: existing.notes, reused: true });
+				return;
+			}
+		}
 		const engine = pickEngine(job.kind);
 		// The per-need refusal guards (BYOK 2026-09-22 / provider-key
 		// interlude 2026-09-25): no engine for the kind's tier, or the
@@ -230,10 +249,13 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 				| VisualToolInput
 				| PdfToolInput
 				| ManimToolInput
+				| ToyDataToolInput
 				| undefined;
 			const pdf = resolved as PdfToolInput | undefined;
 			const failure: BuiltinJobResult =
-				job.kind === "manim"
+				job.kind === "dataset"
+					? { title: typeof (resolved as ToyDataToolInput | undefined)?.title === "string" ? (resolved as ToyDataToolInput).title : "", files: [], notes: `FAILED: ${reason}` }
+				: job.kind === "manim"
 					? {
 							title: typeof (resolved as ManimToolInput | undefined)?.title === "string" ? (resolved as ManimToolInput).title : "",
 							file: "",
@@ -436,7 +458,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 		const input = (passedInput ?? resolveInput(job, passedInput)) as DemoToolInput | undefined;
 		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Interactive demo";
-		const brief = typeof input?.brief === "string" ? input.brief : "";
+		const brief = withPaperData(job.chatId, typeof input?.brief === "string" ? input.brief : "", "Embed the values you need directly in the demo.");
 
 		try {
 			jobStore.updateJob(jobId, { activity: "building demo" });
@@ -472,7 +494,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		const { job } = ctx;
 
 		const input = (passedInput ?? resolveInput(job, passedInput)) as VisualToolInput | undefined;
-		const brief = typeof input?.brief === "string" ? input.brief : "";
+		const brief = withPaperData(job.chatId, typeof input?.brief === "string" ? input.brief : "", "Copy the values you need into the figure exactly as they appear here.");
 		const imagePath = typeof input?.image === "string" ? input.image : undefined;
 
 		try {
@@ -520,7 +542,8 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 		const input = (passedInput ?? resolveInput(job, passedInput)) as ManimToolInput | undefined;
 		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Animation";
-		const brief = typeof input?.brief === "string" ? input.brief : "";
+		const hasData = (chatToyData(job.chatId)?.files.length ?? 0) > 0;
+		const brief = withPaperData(job.chatId, typeof input?.brief === "string" ? input.brief : "", "The scene can read each of these files from data/<name>.");
 
 		try {
 			jobStore.updateJob(jobId, { activity: "preparing animation" });
@@ -529,6 +552,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 				{
 					engine: model,
 					outputPath: path.join(chatRendersDir(job.chatId), `${job.id}.mp4`),
+					...(hasData ? { dataDir: toyDir(chatCacheKey(job.chatId)) } : {}),
 					abortSignal: loop.abortSignal,
 					chatId: loop.chatId,
 					onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
@@ -542,6 +566,81 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			const reason = err instanceof Error ? err.message : String(err);
 			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
 			await finishJob(jobId, { title, file: "", notes: `FAILED: ${reason}` });
+		}
+	}
+
+	// ─── papersplainer: the per-paper cache ──────────────────────────────────
+
+	/** A maker's brief with the paper's toy data appended (when there is any). */
+	function withPaperData(chatId: string, brief: string, how: string): string {
+		const context = toyDataContext(chatToyData(chatId), how);
+		return context ? `${brief}\n\n${context}` : brief;
+	}
+
+	/** First PDF read in a paper session: that PDF is the session's paper.
+	 *  Link the session to the paper's cache and collect its figure pages in
+	 *  the background. Never fails the read. */
+	function adoptPaper(chatId: string, rawPath: string): void {
+		if (chatStore.getChat(chatId)?.kind !== "paper" || chatPaperKey(chatId)) return;
+		void (async () => {
+			const pdf = resolvePaperOrSourcePath(rawPath);
+			const key = await paperKeyForFile(pdf);
+			if (chatPaperKey(chatId)) return;
+			// Toy data made before the paper was known moves to the paper's cache.
+			const early = readManifest(`chat-${chatId}`)?.toy;
+			setChatPaper(chatId, key);
+			updateManifest(key, pdf, (manifest) => { if (early && !manifest.toy) manifest.toy = early; });
+			if (early && !fsSync.existsSync(toyDir(key))) await fs.cp(toyDir(`chat-${chatId}`), toyDir(key), { recursive: true });
+			await ensurePaperFigures(pdf, key);
+		})().catch((err: unknown) => console.error(`[paper-cache ${chatId}]`, err));
+	}
+
+	async function runDatasetJob(
+		jobId: string,
+		model: PiEngine | undefined,
+		passedInput: JobToolInput | undefined,
+		loop: LoopContext,
+	): Promise<void> {
+		const ctx = jobContext(jobId);
+		if (!ctx) return;
+		const { job } = ctx;
+
+		const input = (passedInput ?? resolveInput(job, passedInput)) as ToyDataToolInput | undefined;
+		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Toy dataset";
+		const brief = typeof input?.brief === "string" ? input.brief : "";
+
+		try {
+			jobStore.updateJob(jobId, { activity: "preparing toy dataset" });
+			const key = chatCacheKey(job.chatId);
+			const result = await runToyDataMaker(
+				{ title, brief },
+				{
+					engine: model,
+					outputDir: toyDir(key),
+					abortSignal: loop.abortSignal,
+					chatId: loop.chatId,
+					onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
+					onActivity: (line) => jobStore.updateJob(jobId, { activity: line }),
+				},
+			);
+			if (result.files.length > 0 && stillRunning(jobId)) {
+				const toy = { title: result.title, files: result.files, notes: result.notes, createdAt: new Date().toISOString() };
+				updateManifest(key, "", (manifest) => { manifest.toy = toy; });
+				// The session may have been linked to its paper while the maker ran:
+				// the dataset belongs in the paper's cache, where later sessions find it.
+				const now = chatCacheKey(job.chatId);
+				if (now !== key && !readManifest(now)?.toy) {
+					await fs.cp(toyDir(key), toyDir(now), { recursive: true });
+					updateManifest(now, "", (manifest) => { manifest.toy = toy; });
+				}
+			}
+			if (result.files.length === 0 && stillRunning(jobId)) jobStore.updateJob(jobId, { error: result.notes ?? "toy dataset failed" });
+			await finishJob(jobId, result);
+		} catch (err) {
+			if (loop.abortSignal.aborted) return;
+			const reason = err instanceof Error ? err.message : String(err);
+			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
+			await finishJob(jobId, { title, files: [], notes: `FAILED: ${reason}` });
 		}
 	}
 
@@ -562,6 +661,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		const question = typeof input?.question === "string" ? input.question : "";
 
 		try {
+			adoptPaper(job.chatId, path);
 			jobStore.updateJob(jobId, { activity: "reading pdf" });
 			const result = await runPdfReaderAgent(
 				{ path, question },

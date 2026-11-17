@@ -25,6 +25,7 @@ const KIND_LABEL: Record<JobKind, string> = {
 	visual: "Figure agent",
 	pdf: "PDF reader",
 	manim: "Animation agent",
+	dataset: "Toy data agent",
 	plugin: "Plugin worker",
 };
 
