@@ -226,7 +226,8 @@ export function ensureRenderEnv(
 }
 
 async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => void, signal?: AbortSignal): Promise<string> {
-	const uv = findUv() ?? (await downloadUv(onActivity, signal));
+	const existingUv = findUv();
+	const uv = existingUv ?? (await downloadUv(onActivity, signal));
 	const dir = envDir(kind);
 	await fs.mkdir(PATHS.renderEnv, { recursive: true });
 	await fs.rm(readyFile(kind), { force: true });
@@ -241,6 +242,8 @@ async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => voi
 	const check = await runProcess(venvPython(kind), ["-c", "import manim"], { signal, timeoutMs: 5 * 60_000 });
 	if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
 	await fs.writeFile(readyFile(kind), ENV_STAMP);
+	// The installer is only needed again for a reinstall, and is quick to fetch.
+	if (!existingUv) await fs.rm(path.dirname(localUv()), { recursive: true, force: true });
 	return venvPython(kind);
 }
 

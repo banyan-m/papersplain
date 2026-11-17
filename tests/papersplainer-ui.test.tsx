@@ -13,6 +13,7 @@ import { ChatActionsContext } from "../components/chat.tsx";
 import { DraftShell, startDraftSession } from "../components/new-session.tsx";
 import { isMoleculeDetails, ManimOutputCard, MoleculeCard, renderFileUrl } from "../components/artifacts/render-card.tsx";
 import { sectionedSegments } from "../components/settings/agent-section.tsx";
+import { renderEnvBanner } from "../components/render-env-setup.tsx";
 
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
 beforeEach(() => {
@@ -128,5 +129,16 @@ describe("settings: the guide's prompts", () => {
 		const withGuide = sectionedSegments({ ...base, guide: [seg("guide/00-base.md"), seg("shared/40-formatting.md", true)] });
 		assert.deepEqual(withGuide.map((s) => s.label), ["Teacher", "Prober", "Practice", "Paper guide", "Shared"]);
 		assert.equal(withGuide.at(-1)!.segments[0]!.usageHint, "Used by Paper guide");
+	});
+});
+
+describe("first-launch animation setup", () => {
+	it("shows nothing when ready, the current step while installing, and the reason on failure", () => {
+		assert.deepEqual(renderEnvBanner(null), { kind: "hidden" });
+		assert.deepEqual(renderEnvBanner({ manim: { ready: true, installing: false } }), { kind: "hidden" });
+		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: true }, activity: { manim: "installing manim" } }), { kind: "installing", step: "installing manim" });
+		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: true } }), { kind: "installing", step: "starting" });
+		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: false }, errors: { manim: "no network" } }), { kind: "failed", reason: "no network" });
+		assert.deepEqual(renderEnvBanner({ manim: { ready: false, installing: false } }), { kind: "hidden" });
 	});
 });
