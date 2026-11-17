@@ -16,7 +16,12 @@ import type { EmissionStats } from "./graph.ts";
 /** Session kind: teach is the default when a saved record omits kind.
  * Practice uses the adaptive-practice agent without teaching extraction or
  * graph writes. Reading an absent kind does not require a record migration. */
-export type ChatKind = "teach" | "practice";
+export type ChatKind = "teach" | "practice" | "paper";
+
+/** papersplainer: how a paper session runs. walkthrough = the guide leads,
+ *  section by section, pausing after each; chat = the learner leads and the
+ *  guide answers from the paper. */
+export type PaperMode = "walkthrough" | "chat";
 
 /** One persisted native session under data/chats/<id>.json. Messages retain
  * native agent history; transcript rendering groups them into a separate view.
@@ -31,6 +36,8 @@ export interface ChatRecord {
 	imageSnapshots?: Record<string, ImageSnapshot>;
 	/** The session's kind; an absent field reads as teach. */
 	kind?: ChatKind;
+	/** Paper sessions only; absent reads as walkthrough. */
+	paperMode?: PaperMode;
 	/** The session's plan tree, written by the native plan tools. */
 	tree?: PlanTree;
 	/** Append-only usage log, separate from message history: one entry per billed

@@ -7,6 +7,7 @@ import { checkLearnerImage } from "./learner-image.ts";
 import { resolveSourcePath } from "./fs-shared.ts";
 import { MOLECULE_COLORS, MOLECULE_STYLES } from "../../core/contracts.ts";
 import { moleculeInputProblem } from "../subagents/molecule-render.ts";
+import { resolvePaperOrSourcePath } from "./paper-fetch.ts";
 
 /**
  * Async sub-agent job tools (vision §2.5; W2/W6 kinds + the pi-model
@@ -220,7 +221,7 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 			execute: serverExecute("pdf", pdfInputSchema, (input, { toolCallId }) => {
 				// Admission uses the current boundary; the queued reader checks
 				// again at job start. Preserve raw args/history and replay IDs.
-				if (!ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId)) resolveSourcePath(input.path);
+				if (!ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId)) resolvePaperOrSourcePath(input.path);
 				return dispatch(ctx, "pdf", toolCallId, PDF_ACK, input);
 			}),
 		},
