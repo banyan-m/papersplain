@@ -8,6 +8,7 @@ import { ActivityProvider } from "@/components/activity-dock";
 import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
+import RenderEnvSetup from "@/components/render-env-setup";
 import { PluginsProvider } from "@/components/plugins";
 import { readThemeBoot } from "@/src/server";
 
@@ -51,6 +52,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 			</ServerEventsProvider>
 			{/* Auto-update banner (Wave C): fixed card, Electron-only pushes. */}
 			<UpdateBanner />
+			{/* papersplainer: one-time Manim environment setup, started on first launch. */}
+			<RenderEnvSetup />
 		</body>
 		</html>
 	);
