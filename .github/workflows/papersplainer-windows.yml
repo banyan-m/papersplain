@@ -1,0 +1,59 @@
+name: Papersplainer Windows installer
+
+# Builds an unsigned Windows installer and saves it as a workflow artifact.
+# Nothing is published. Runs only when asked: push the commit to build to
+# the `windows-build` branch, or start it by hand from the Actions tab.
+on:
+  push:
+    branches: [windows-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: papersplainer-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  package:
+    name: Package (windows-x64)
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+      - run: npm run plugins:setup
+      - run: npm run build
+      # The same gates LearnHarness's release workflow runs before packaging.
+      - run: node scripts/smoke-provider-runtime.mjs
+      - run: node scripts/build-server.mjs
+      - run: node scripts/smoke-server.mjs --electron
+      - name: Package (no publish)
+        run: npx electron-builder --win --x64 --publish never
+      - name: Save the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: papersplainer-windows-x64
+          retention-days: 14
+          if-no-files-found: error
+          path: dist/*.exe
+      # Checks on the packaged app. They run after the installer is saved, so
+      # a failure here is reported without withholding the installer.
+      - name: Initialize packaged providers offline
+        run: |
+          payload="dist/win-unpacked/resources/server/standalone"
+          node scripts/smoke-provider-runtime.mjs --standalone "$payload"
+          node scripts/smoke-provider-runtime.mjs --standalone "$payload" --runtime "dist/win-unpacked/Papersplainer.exe"
+      - name: Exercise packaged demo runtime
+        run: node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/Papersplainer.exe --browser

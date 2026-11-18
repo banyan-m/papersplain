@@ -43,7 +43,9 @@ const path = require("node:path");
 // renderer owns the number; this is the IPC widen target).
 const SIDEBAR_AUTOCLOSE = 928;
 
-const PRODUCT_NAME = "LearnHarness";
+// papersplainer: its own name, so its userData (sessions, keys, the Manim
+// environment) is separate from an installed LearnHarness.
+const PRODUCT_NAME = "Papersplainer";
 
 // APP NAME → userData (owner, 2026-10-10): the Application Support dir is
 // exactly "LearnHarness" in dev AND packaged. Packaged Electron would
