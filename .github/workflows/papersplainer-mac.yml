@@ -1,0 +1,68 @@
+name: Papersplainer macOS app
+
+# Builds an UNSIGNED macOS app (Apple silicon) and saves it as a workflow
+# artifact. Nothing is published, signed or notarized. Runs only when asked:
+# push the commit to build to the `mac-build` branch, or start it by hand
+# from the Actions tab. macOS runner minutes are billed at a high multiple
+# on private repositories, so this never runs on ordinary pushes.
+on:
+  push:
+    branches: [mac-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: papersplainer-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  package:
+    name: Package (mac-arm64)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: npm
+      # The app icon is an Icon Composer document (build/icon.icon); compiling
+      # it needs macOS 26+ and Xcode 26+, as in LearnHarness's release workflow.
+      - name: Select Xcode 26+ for the icon compile
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - run: npm ci
+      - run: npm run plugins:setup
+      - run: npm run build
+      # The same gates LearnHarness's release workflow runs before packaging.
+      - run: node scripts/smoke-provider-runtime.mjs
+      - run: node scripts/build-server.mjs
+      - run: node scripts/smoke-server.mjs --electron
+      - name: Package (unsigned, no notarization, no publish)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --mac --arm64 --publish never -c.mac.notarize=false
+      - name: Save the app
+        uses: actions/upload-artifact@v7
+        with:
+          name: papersplainer-mac-arm64
+          retention-days: 14
+          if-no-files-found: error
+          path: dist/*.dmg
+      # Checks on the packaged app. They run after the app is saved, so a
+      # failure here is reported without withholding it.
+      - name: Initialize packaged providers offline
+        run: |
+          app="dist/mac-arm64/Papersplainer.app/Contents"
+          node scripts/smoke-provider-runtime.mjs --standalone "$app/Resources/server/standalone"
+          node scripts/smoke-provider-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/Papersplainer"
+      - name: Exercise packaged demo runtime
+        run: |
+          app="dist/mac-arm64/Papersplainer.app/Contents"
+          node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/Papersplainer" --browser
