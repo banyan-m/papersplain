@@ -10,6 +10,7 @@ import { providerEventObserver } from "../provider-events.ts";
 import { backgroundCaptureStream, createBackgroundCapture } from "../background-capture.ts";
 import { workerRequestStream } from "../worker-request-admission.ts";
 import type { ManimResult } from "../../core/contracts.ts";
+import { PATHS } from "../../../config.ts";
 import { ensureRenderEnv, latexAvailable, runProcess, tail } from "./render-env.ts";
 import { snippetAround, streamOnce, toolText } from "./visual-maker.ts";
 
@@ -21,8 +22,11 @@ import { snippetAround, streamOnce, toolText } from "./visual-maker.ts";
  * clip rendered and delivered.
  *
  * The scene is Python written by a model and executed on this computer in
- * the managed Manim environment. It runs in a throwaway working folder,
- * but it is NOT sandboxed.
+ * the managed Manim environment. Three limits apply, none of which is a
+ * true sandbox: a static check rejects scenes that reach for files, the
+ * network, other processes or Python's internals (scene_check.py); the
+ * process inherits no secrets from the app's environment; and it runs in a
+ * throwaway folder with a time limit.
  */
 
 export const MANIM_SCENE_CLASS = "Explainer";
@@ -87,6 +91,8 @@ Scene requirements:
   files, fonts, sounds). The one exception for files: when the brief lists example data files, the scene may
   READ them from the relative folder data/ (for example open("data/reads.fastq")) and should show their real
   contents instead of retyping them.
+- A scene that imports other modules, opens other files, or touches Python internals (getattr, eval, dunder
+  attributes) is rejected before it runs; the error lists the lines to change.
 - Length: aim for 10 to 40 seconds. Use self.wait() so each step can be read.
 - Dark default background, large text (font_size 28 or more for labels), at most two accent colors.
 - Keep everything inside the frame (about 14 units wide by 8 high). Nothing may overlap unless intended.
@@ -367,6 +373,7 @@ print(json.dumps({"duration": duration, "frames": result}))
 `;
 
 const PREVIEW_FRAMES = 5;
+const SCENE_CHECK = path.join(PATHS.root, "src", "agent", "subagents", "toy-data", "scene_check.py");
 
 export function createManimRenderer(options: { dataDir?: string } = {}): ManimRenderer {
 	let python: string | null = null;
@@ -390,12 +397,19 @@ export function createManimRenderer(options: { dataDir?: string } = {}): ManimRe
 			const dir = path.join(workDir, `r${renders++}`);
 			await fs.mkdir(dir, { recursive: true });
 			await fs.writeFile(path.join(dir, "scene.py"), code);
+			const verdict = await runProcess(python, ["-I", SCENE_CHECK, path.join(dir, "scene.py")], { signal, timeoutMs: 60_000, scrubEnv: true });
+			const line = verdict.stdout.split("\n").find((l) => l.startsWith("PAPERSPLAINER_SCENE "));
+			if (verdict.code !== 0 || !line) throw new Error(`the scene could not be checked: ${tail(verdict.stderr || verdict.stdout)}`);
+			const { problems } = JSON.parse(line.slice("PAPERSPLAINER_SCENE ".length)) as { problems: string[] };
+			if (problems.length > 0) {
+				throw new Error(`NOT ALLOWED, the scene was not run. A scene may only use manim, numpy and pure-data standard library modules, and may only read files under data/:\n${problems.join("\n")}`);
+			}
 			if (options.dataDir) await fs.cp(options.dataDir, path.join(dir, "data"), { recursive: true }).catch(() => {});
 			const run = await runProcess(
 				python,
-				["-m", "manim", "render", quality === "final" ? "-qm" : "-ql", "--disable_caching", "--progress_bar", "none",
+				["-I", "-m", "manim", "render", quality === "final" ? "-qm" : "-ql", "--disable_caching", "--progress_bar", "none",
 					"--media_dir", path.join(dir, "media"), "-o", "clip", "scene.py", MANIM_SCENE_CLASS],
-				{ cwd: dir, signal, timeoutMs: quality === "final" ? 15 * 60_000 : 5 * 60_000 },
+				{ cwd: dir, signal, timeoutMs: quality === "final" ? 15 * 60_000 : 5 * 60_000, scrubEnv: true },
 			);
 			if (run.timedOut) throw new Error(`the render timed out (${quality === "final" ? 15 : 5} minutes). Shorten or simplify the animation.`);
 			if (run.code !== 0) throw new Error(tail(`${run.stdout}\n${run.stderr}`, 3000));

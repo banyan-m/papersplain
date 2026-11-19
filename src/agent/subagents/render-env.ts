@@ -101,6 +101,29 @@ function findUv(): string | null {
 	return onPath("uv");
 }
 
+/** Environment variables a model-written script is allowed to inherit: what
+ *  Python, LaTeX and font lookup need to run, and nothing else. API keys,
+ *  access tokens and the app's own settings never reach the script. */
+const ENV_ALLOWLIST = new Set([
+	"PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR",
+	"HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+	"PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+	"XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "FONTCONFIG_PATH", "FONTCONFIG_FILE",
+	"NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS",
+]);
+
+/** process.env reduced to ENV_ALLOWLIST (names compared case-insensitively,
+ *  as Windows does; TeX's own TEXMF* variables are kept too). Pure given the input. */
+export function scrubbedEnv(source: Record<string, string | undefined> = process.env): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const [name, value] of Object.entries(source)) {
+		if (value === undefined) continue;
+		const upper = name.toUpperCase();
+		if (ENV_ALLOWLIST.has(upper) || upper.startsWith("TEXMF")) out[name] = value;
+	}
+	return out;
+}
+
 export interface ProcessResult {
 	code: number | null;
 	stdout: string;
@@ -113,13 +136,13 @@ export interface ProcessResult {
 export function runProcess(
 	command: string,
 	args: string[],
-	opts: { cwd?: string; signal?: AbortSignal; timeoutMs?: number; env?: Record<string, string> } = {},
+	opts: { cwd?: string; signal?: AbortSignal; timeoutMs?: number; env?: Record<string, string>; scrubEnv?: boolean } = {},
 ): Promise<ProcessResult> {
 	return new Promise((resolve, reject) => {
 		opts.signal?.throwIfAborted();
 		const child = spawn(command, args, {
 			cwd: opts.cwd,
-			env: { ...process.env, ...opts.env },
+			env: { ...(opts.scrubEnv ? scrubbedEnv() : process.env), ...opts.env } as NodeJS.ProcessEnv,
 			stdio: ["ignore", "pipe", "pipe"],
 			windowsHide: true,
 		});

@@ -20,7 +20,7 @@ import type { PiEngine } from "../src/agent/models.ts";
 import { createManimRenderer, runManimMaker, sceneProblem, type ManimRender, type ManimRenderer } from "../src/agent/subagents/manim-maker.ts";
 import { createMoleculeTool, moleculeInputProblem } from "../src/agent/tools/molecule.ts";
 import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
-import { chatRendersDir, trimEnv, uvAssetName } from "../src/agent/subagents/render-env.ts";
+import { chatRendersDir, runProcess, scrubbedEnv, trimEnv, uvAssetName } from "../src/agent/subagents/render-env.ts";
 import { summarizeCif, summarizePdb } from "../src/core/structure-summary.ts";
 import { moleculeViewSpec } from "../components/artifacts/molecule-style.ts";
 import type { MoleculeDetails } from "../src/core/contracts.ts";
@@ -329,6 +329,48 @@ describe("real renders (need LH_MANIM_PYTHON)", () => {
 		assert.equal(result.file, "clip.mp4", result.notes);
 		assert.ok(fs.statSync(out).size > 1000, "a real mp4 was written");
 		assert.ok((result.durationSec ?? 0) > 1);
+	});
+
+	it("a scene that reaches for files, processes or internals is rejected before it runs", { skip: !process.env.LH_MANIM_PYTHON }, async () => {
+		const renderer = createManimRenderer();
+		assert.equal(await renderer.prepare(() => {}), null);
+		const marker = path.join(tmp, "must-not-exist.txt");
+		const hostile = [
+			"from manim import *",
+			"import os",
+			"class Explainer(Scene):",
+			"    def construct(self):",
+			`        open(${JSON.stringify(marker)}, "w").write("ran")`,
+			"        getattr(os, 'system')('echo hi')",
+			"        self.wait(0.1)",
+		].join("\n");
+		await assert.rejects(renderer.render(hostile, "preview"), (err: Error) => {
+			assert.match(err.message, /^NOT ALLOWED, the scene was not run/);
+			assert.match(err.message, /line 2: import of 'os' is not allowed/);
+			assert.match(err.message, /line 5: open\(\) may only read example data files under data\//);
+			assert.match(err.message, /line 6: 'getattr' is not allowed/);
+			return true;
+		});
+		assert.equal(fs.existsSync(marker), false, "the scene never executed");
+		await renderer.dispose();
+	});
+
+	it("a model-written script inherits no secrets from the app's environment", { skip: !process.env.LH_MANIM_PYTHON }, async () => {
+		const secret = "sk-test-secret-value-123";
+		process.env.PAPERSPLAINER_TEST_API_KEY = secret;
+		try {
+			const probe = "import os; print(os.environ.get('PAPERSPLAINER_TEST_API_KEY'), 'PATH' in os.environ)";
+			const open = await runProcess(process.env.LH_MANIM_PYTHON!, ["-c", probe]);
+			assert.equal(open.stdout.trim(), `${secret} True`, "without scrubbing the child sees the variable");
+			const scrubbed = await runProcess(process.env.LH_MANIM_PYTHON!, ["-c", probe], { scrubEnv: true });
+			assert.equal(scrubbed.stdout.trim(), "None True", "with scrubbing it does not, and PATH survives");
+		} finally {
+			delete process.env.PAPERSPLAINER_TEST_API_KEY;
+		}
+		assert.deepEqual(
+			Object.keys(scrubbedEnv({ PATH: "/bin", Path: "C:\\x", OPENROUTER_API_KEY: secret, GITHUB_TOKEN: "t", LH_DATA_DIR: "/d", TEXMFHOME: "/t", HOME: "/h" })).sort(),
+			["HOME", "PATH", "Path", "TEXMFHOME"],
+		);
 	});
 
 	it("Manim reports a Python error as a render error", { skip: !process.env.LH_MANIM_PYTHON }, async () => {
