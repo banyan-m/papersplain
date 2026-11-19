@@ -67,6 +67,8 @@ function withPayload(test: (fixture: {
 		write(path.join(STANDALONE, "src", "agent", "prompts", "guide", "00-base.md"));
 		write(path.join(STANDALONE, "src", "agent", "subagents", "toy-data", "checkdata.py"));
 		write(path.join(STANDALONE, "src", "agent", "subagents", "toy-data", "papertoy.py"));
+		for (const name of ["build_h5.py", "scene_check.py"]) write(path.join(STANDALONE, "src", "agent", "subagents", "toy-data", name));
+		for (const name of ["pyodide.mjs", "pyodide.asm.mjs", "pyodide.asm.wasm", "python_stdlib.zip", "pyodide-lock.json"]) write(path.join(STANDALONE, "node_modules", "pyodide", name));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "00-base.md"));
 		write(path.join(STANDALONE, "src", "agent", "prompts", "side-chat", "90-style.md"));
 		test({ root, write, run: () => spawnSync(process.execPath, [path.join(root, "scripts", "build-server.mjs")], {

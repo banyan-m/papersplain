@@ -22,6 +22,8 @@ import { createPaperFigureTool } from "../src/agent/tools/paper-figure.ts";
 import { chatCacheKey, chatPaperKey, chatToyData, ensurePaperFigures, forgetChatPaper, paperCacheDir, paperKeyForFile, readManifest, setChatPaper, toyDir } from "../src/agent/subagents/paper-cache-store.ts";
 import { createJobRunner, demoModelOverride, pdfModelOverride, visualModelOverride } from "../src/agent/subagents/runner.ts";
 import { chatRendersDir } from "../src/agent/subagents/render-env.ts";
+import { PythonSandboxTimeout, runSandboxedPython, sandboxRequestTarget } from "../src/agent/subagents/python-sandbox.ts";
+import { getHeadless } from "../src/agent/subagents/headless.ts";
 import { createToyDataRunner, runProblems, runReport, runToyDataMaker, type CheckedFile, type ToyDataRunner } from "../src/agent/subagents/toy-data-maker.ts";
 import { buildSubagentSteer, isSubagentFailure, type ManimResult, type ShowImageDetails, type SteerMessage, type ToyDataResult } from "../src/core/contracts.ts";
 import { findFigureCaptions, isCacheFileName, isPaperKey, toyDataContext } from "../src/core/paper-cache.ts";
@@ -249,11 +251,72 @@ describe("toy-data maker (fake model + fake runner)", () => {
 	});
 });
 
+describe("the Python sandbox", () => {
+	const browser = getHeadless().available();
+
+	it("serves only its own runtime files and refuses every other address", () => {
+		assert.deepEqual(sandboxRequestTarget("https://pyodide.sandbox.invalid/runner.html"), { kind: "page" });
+		assert.deepEqual(sandboxRequestTarget("https://pyodide.sandbox.invalid/pyodide.asm.wasm"), { kind: "asset", name: "pyodide.asm.wasm" });
+		assert.deepEqual(sandboxRequestTarget("https://pyodide.sandbox.invalid/../../package.json"), { kind: "refused" });
+		assert.deepEqual(sandboxRequestTarget("https://pyodide.sandbox.invalid/README.md"), { kind: "refused" });
+		assert.deepEqual(sandboxRequestTarget("https://example.com/"), { kind: "refused" });
+		assert.deepEqual(sandboxRequestTarget("http://localhost:3000/api/chats"), { kind: "refused" });
+		assert.deepEqual(sandboxRequestTarget("file:///etc/passwd"), { kind: "refused" });
+		assert.deepEqual(sandboxRequestTarget("data:text/javascript,"), { kind: "inline" });
+	});
+
+	it("a script cannot see this computer's files, its environment, Node, or the network", { skip: !browser }, async () => {
+		process.env.PAPERSPLAINER_TEST_API_KEY = "sk-test-secret-value-456";
+		try {
+			const result = await runSandboxedPython([
+				"import os, sys",
+				"print('platform', sys.platform)",
+				"print('host files', os.path.exists('/etc/passwd'), os.path.exists(" + JSON.stringify(process.cwd()) + "))",
+				"print('secret', os.environ.get('PAPERSPLAINER_TEST_API_KEY'))",
+				"import js",
+				"print('node', hasattr(js, 'process'), hasattr(js, 'require'))",
+				"try:",
+				"    import urllib.request; urllib.request.urlopen('https://example.com', timeout=3); print('network reached')",
+				"except Exception as e:",
+				"    print('network', type(e).__name__)",
+				"try:",
+				"    from pyodide.http import pyfetch",
+				"    await pyfetch('http://localhost:3000/api/chats'); print('fetch reached')",
+				"except Exception as e:",
+				"    print('fetch', type(e).__name__)",
+				"open('out.txt', 'w').write('made in the sandbox')",
+			].join("\n"));
+			assert.equal(result.error, null);
+			assert.match(result.output, /platform emscripten/);
+			assert.match(result.output, /host files False False/);
+			assert.match(result.output, /secret None/);
+			assert.match(result.output, /node False False/);
+			assert.match(result.output, /network URLError/);
+			assert.match(result.output, /fetch \w+Error/);
+			assert.doesNotMatch(result.output, /reached/);
+			assert.deepEqual(result.files.map((f) => [f.name, f.data.toString()]), [["out.txt", "made in the sandbox"]]);
+		} finally {
+			delete process.env.PAPERSPLAINER_TEST_API_KEY;
+		}
+	});
+
+	it("reports a Python error, stops a runaway script, and works again afterwards", { skip: !browser }, async () => {
+		const failed = await runSandboxedPython("x = 1 / 0");
+		assert.match(failed.error ?? "", /ZeroDivisionError: division by zero/);
+		await assert.rejects(runSandboxedPython("while True: pass", { timeoutMs: 5_000 }), (err: Error) => err instanceof PythonSandboxTimeout && /more than 5 seconds/.test(err.message));
+		const after = await runSandboxedPython("print('ok')");
+		assert.equal(after.output.trim(), "ok");
+	});
+
+	it("refuses folders and oversized output", { skip: !browser }, async () => {
+		await assert.rejects(runSandboxedPython("import os; os.mkdir('sub')"), /the script made a folder \(sub\)/);
+		await assert.rejects(runSandboxedPython("open('big.bin', 'wb').write(b'x' * (5 * 1024 * 1024))"), /wrote more than 4 MB in total/);
+	});
+});
+
 const GENERATOR = `
 import random
-import numpy as np
-import h5py
-from papertoy import sam_to_bam
+from papertoy import sam_to_bam, write_h5
 
 random.seed(7)
 ref = "".join(random.choice("ACGT") for _ in range(60))
@@ -277,10 +340,11 @@ with open("toy_variants.vcf", "w") as f:
     f.write("#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\tsample_A\\n")
     f.write(f"toy_chr1\\t25\\t.\\t{ref[24]}\\t{alt}\\t50\\tPASS\\tDP=5\\tGT\\t0/1\\n")
 
-with h5py.File("toy_cells.h5ad", "w") as f:
-    f.create_dataset("X", data=np.random.default_rng(7).poisson(2, size=(4, 3)).astype("float32"))
-    f.create_group("obs").create_dataset("_index", data=np.array([b"cell_1", b"cell_2", b"cell_3", b"cell_4"]))
-    f.create_group("var").create_dataset("_index", data=np.array([b"gene_1", b"gene_2", b"gene_3"]))
+write_h5("toy_cells.h5ad", {
+    "X": {"data": [[random.randint(0, 5) for _ in range(3)] for _ in range(4)], "dtype": "float32"},
+    "obs/_index": {"data": ["cell_1", "cell_2", "cell_3", "cell_4"], "dtype": "str"},
+    "var/_index": {"data": ["gene_1", "gene_2", "gene_3"], "dtype": "str"},
+}, attrs={"obs": {"encoding-type": "dataframe"}, "var": {"encoding-type": "dataframe"}})
 `;
 
 describe("real runs (need LH_MANIM_PYTHON)", () => {

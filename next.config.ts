@@ -89,6 +89,13 @@ const nextConfig: NextConfig = {
 			// from disk per ask — a directory no agent-composition read names.
 			"src/agent/prompts/side-chat/*.md",
 			"src/agent/subagents/toy-data/*.py",
+			// papersplainer: the Python sandbox serves Pyodide's runtime files to
+			// its browser page from disk; no import names them.
+			"node_modules/pyodide/pyodide.mjs",
+			"node_modules/pyodide/pyodide.asm.mjs",
+			"node_modules/pyodide/pyodide.asm.wasm",
+			"node_modules/pyodide/python_stdlib.zip",
+			"node_modules/pyodide/pyodide-lock.json",
 			"src/agent/image-processing/*.mjs",
 			"src/agent/image-processing/LICENSE",
 			"node_modules/@silvia-odwyer/photon-node/**/*",

@@ -13,6 +13,8 @@ import type { ToyDataResult } from "../../core/contracts.ts";
 import { isCacheFileName, type ToyDataFile } from "../../core/paper-cache.ts";
 import { ensureRenderEnv, runProcess, tail } from "./render-env.ts";
 import { snippetAround, streamOnce, toolText } from "./visual-maker.ts";
+import { getHeadless } from "./headless.ts";
+import { PythonSandboxTimeout, pythonSandboxAvailable, runSandboxedPython } from "./python-sandbox.ts";
 
 /**
  * papersplainer: the toy-data maker. Given a description of the data a
@@ -21,8 +23,12 @@ import { snippetAround, streamOnce, toolText } from "./visual-maker.ts";
  * before anything is delivered. The same doctrine as the other makers:
  * never deliver what has not been verified. Here "looking" is parsing.
  *
- * The generator is model-written Python executed on this computer in the
- * managed Python environment, in a throwaway folder. It is NOT sandboxed.
+ * The generator is model-written Python, so it never runs as a process on
+ * this computer. It runs in the Python sandbox (python-sandbox.ts): Pyodide
+ * inside a headless browser page with no file system and no network. Only
+ * the files it wrote come out, as bytes. Two fixed, trusted scripts then
+ * run in the managed Python environment: build_h5.py turns the plain HDF5
+ * descriptions into real HDF5 files, and checkdata.py parses every file.
  */
 
 const TOY_DATA_DIR = path.join(PATHS.root, "src", "agent", "subagents", "toy-data");
@@ -81,15 +87,23 @@ and follow one record through the method by hand. So:
   a matrix has samples, the sample sheet lists the same names. The files must tell one small coherent story.
 - Illustrative, never passed off as real. Use obviously toy names (toy_chr1, sample_A, gene_1). Do not invent
   accession numbers, real gene measurements, or results. Fix the random seed so reruns give the same files.
-- Do not download anything.
+- Do not download anything. The script runs in a sandbox with no network and no access to this computer's files.
 
 Your script:
 - Writes every file into the current working directory, with plain file names (no subfolders).
-- May use the Python standard library, numpy, and h5py. Nothing else is installed.
+- May use the Python standard library ONLY. numpy, pandas, h5py and every other package are NOT available: use
+  lists, the random module, csv, json, struct, gzip.
 - For BAM: write the alignments as a SAM file first, then \`from papertoy import sam_to_bam\` and call
   \`sam_to_bam("x.sam", "x.bam")\`. Keep the .sam too; it is the readable twin.
-- For HDF5-based formats (.h5, .h5ad, .loom): write a small file with h5py that follows the format's layout (for
-  .h5ad: X, obs, var at the top level).
+- For HDF5-based formats (.h5, .hdf5, .h5ad, .loom): \`from papertoy import write_h5\` and describe the file; the
+  real HDF5 file is then built for you and appears in the report:
+    write_h5("toy_cells.h5ad", {
+        "X": {"data": [[1, 0, 2], [0, 3, 1]], "dtype": "float32"},
+        "obs/_index": {"data": ["cell_1", "cell_2"], "dtype": "str"},
+        "var/_index": {"data": ["gene_1", "gene_2", "gene_3"], "dtype": "str"},
+    }, attrs={"obs": {"encoding-type": "dataframe"}, "var": {"encoding-type": "dataframe"}})
+  Dataset paths with "/" make groups. dtype is one of float32, float64, int8..int64, uint8..uint64, bool, str.
+  Follow the format's layout (for .h5ad: X, obs, var at the top level).
 - For a format too heavy or proprietary to write for real (CRAM, BCF, .fast5, .pod5, .bigWig, .rds, vendor files): write a
   readable stand-in with an honest name, for example signal_fast5_layout.txt, that lists what the real file contains
   and shows a few example values. Say so in your notes. Never give a stand-in the real extension.
@@ -336,13 +350,18 @@ function errorText(err: unknown): string {
 
 // ─── the production runner ───────────────────────────────────────────────────
 
+const PAPERTOY = path.join(TOY_DATA_DIR, "papertoy.py");
+
 export function createToyDataRunner(): ToyDataRunner {
 	let python: string | null = null;
 	let workDir: string | null = null;
 	let runs = 0;
 	return {
 		async prepare(onActivity, signal) {
+			if (!pythonSandboxAvailable()) return "the Python sandbox files are missing from this install";
+			if (!getHeadless().available()) return `the Python sandbox needs the app's browser helper: ${getHeadless().unavailableReason() ?? "unavailable"}`;
 			try {
+				// Used only by the two fixed scripts (HDF5 builder, format checker).
 				python = await ensureRenderEnv("manim", onActivity, signal);
 			} catch (err) {
 				if (signal?.aborted) throw err;
@@ -353,16 +372,37 @@ export function createToyDataRunner(): ToyDataRunner {
 		},
 		async run(code, signal) {
 			if (!python || !workDir) throw new Error("the runner was not prepared");
-			const base = path.join(workDir, `r${runs++}`);
-			const out = path.join(base, "out");
+			const out = path.join(workDir, `r${runs++}`);
 			await fs.mkdir(out, { recursive: true });
-			await fs.writeFile(path.join(base, "generate.py"), code);
-			// The helpers sit beside the script, not in the output folder, so they never ship as data.
-			const env = { PYTHONPATH: TOY_DATA_DIR, PYTHONDONTWRITEBYTECODE: "1" };
-			const run = await runProcess(python, [path.join(base, "generate.py")], { cwd: out, signal, timeoutMs: 120_000, env });
-			if (run.timedOut) throw new Error("the script ran for more than 2 minutes. A toy dataset should generate in seconds.");
-			if (run.code !== 0) throw new Error(tail(`${run.stdout}\n${run.stderr}`, 3000));
-			const check = await runProcess(python, [path.join(TOY_DATA_DIR, "checkdata.py"), out], { signal, timeoutMs: 120_000, env });
+
+			// 1. The untrusted script, in the sandbox.
+			let result;
+			try {
+				result = await runSandboxedPython(code, { modules: { "papertoy.py": await fs.readFile(PAPERTOY, "utf-8") }, timeoutMs: 60_000, signal });
+			} catch (err) {
+				if (err instanceof PythonSandboxTimeout) throw new Error(`${err.message}. A toy dataset should generate in a second or two.`);
+				throw err;
+			}
+			if (result.error) throw new Error(tail(`${result.output}\n${result.error}`, 3000));
+
+			// 2. Its files, written out under names we accept.
+			const badName = result.files.find((f) => !isCacheFileName(f.name));
+			if (badName) throw new Error(`the script wrote a file named ${JSON.stringify(badName.name)}; use plain file names (letters, digits, dot, dash, underscore)`);
+			for (const file of result.files) await fs.writeFile(path.join(out, file.name), file.data);
+
+			// 3. Trusted: build real HDF5 files from the script's descriptions.
+			const trusted = { signal, timeoutMs: 120_000, scrubEnv: true };
+			let h5Problems: string[] = [];
+			if (result.files.some((f) => f.name.endsWith(".h5spec.json"))) {
+				const built = await runProcess(python, ["-I", path.join(TOY_DATA_DIR, "build_h5.py"), out], trusted);
+				const line = built.stdout.split("\n").find((l) => l.startsWith("PAPERSPLAINER_H5 "));
+				if (built.code !== 0 || !line) throw new Error(`building the HDF5 files failed: ${tail(built.stderr || built.stdout, 1500)}`);
+				h5Problems = (JSON.parse(line.slice("PAPERSPLAINER_H5 ".length)) as { problems: string[] }).problems;
+			}
+			if (h5Problems.length > 0) throw new Error(`write_h5 problems:\n${h5Problems.join("\n")}`);
+
+			// 4. Trusted: parse every file back.
+			const check = await runProcess(python, ["-I", path.join(TOY_DATA_DIR, "checkdata.py"), out], trusted);
 			const line = check.stdout.split("\n").find((l) => l.startsWith("PAPERSPLAINER_CHECK "));
 			if (check.code !== 0 || !line) throw new Error(`checking the files failed: ${tail(check.stderr || check.stdout, 1500)}`);
 			const parsed = JSON.parse(line.slice("PAPERSPLAINER_CHECK ".length)) as { files: CheckedFile[] };

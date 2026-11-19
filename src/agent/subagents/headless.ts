@@ -245,7 +245,7 @@ async function connectBrowserService(): Promise<ConnectedBrowserService | null> 
  * discards its helper, never capture a Browser while a handshake is pending. */
 let helperPageChain: Promise<unknown> = Promise.resolve();
 
-async function withBrowserPage<T>(fn: (page: import("puppeteer-core").Page) => Promise<T>): Promise<T> {
+export async function withBrowserPage<T>(fn: (page: import("puppeteer-core").Page) => Promise<T>): Promise<T> {
 	// Helper first (owner ruling 2026-10-10: the app's own Chromium primary,
 	// system Chrome fallback) — deterministic across users, zero install.
 	const run = async (): Promise<{ value: T } | null> => {
@@ -315,7 +315,7 @@ type IsolatedPage = Pick<
 	"url" | "goto" | "setContent" | "setRequestInterception" | "on" | "off"
 >;
 
-class IsolatedPageCleanupError extends Error {}
+export class IsolatedPageCleanupError extends Error {}
 
 /** Load untrusted markup in memory with the request filter on. Cleanup first
  * retires the document under that same guard, then disables interception.

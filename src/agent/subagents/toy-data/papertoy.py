@@ -178,3 +178,34 @@ def read_bam(bam_path):
         records.append([qname, str(flag), rname, str(pos + 1), str(mapq), cigar or "*", rnext, str(next_pos + 1), str(tlen), seq or "*", qual])
         at = end
     return header, refs, records
+
+
+_H5_DTYPES = {"float32", "float64", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "bool", "str"}
+
+
+def write_h5(path, datasets, attrs=None):
+    """Describe an HDF5 file (.h5, .hdf5, .h5ad, .loom) to be written.
+
+    The script runs in a sandbox with no native libraries, so it cannot write
+    HDF5 itself. This writes a plain description next to the target name; the
+    app then builds the real HDF5 file from it with h5py.
+
+        write_h5("toy_cells.h5ad", {
+            "X": {"data": [[1, 0, 2], [0, 3, 1]], "dtype": "float32"},
+            "obs/_index": {"data": ["cell_1", "cell_2"], "dtype": "str"},
+            "var/_index": {"data": ["gene_1", "gene_2", "gene_3"], "dtype": "str"},
+        }, attrs={"obs": {"encoding-type": "dataframe"}, "var": {"encoding-type": "dataframe"}})
+
+    datasets: path inside the file -> {"data": nested lists, "dtype": one of
+    float32/float64/int8..int64/uint8..uint64/bool/str}. A "/" in the path
+    makes groups. attrs: path ("" for the file itself) -> {name: value}.
+    """
+    import json
+
+    for name, spec in datasets.items():
+        if not isinstance(spec, dict) or "data" not in spec:
+            raise ValueError("dataset %r must be {'data': ..., 'dtype': ...}" % name)
+        if spec.get("dtype", "float64") not in _H5_DTYPES:
+            raise ValueError("dataset %r: dtype must be one of %s" % (name, ", ".join(sorted(_H5_DTYPES))))
+    with open(path + ".h5spec.json", "w") as handle:
+        json.dump({"datasets": datasets, "attrs": attrs or {}}, handle)

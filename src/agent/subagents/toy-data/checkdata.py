@@ -15,7 +15,10 @@ import os
 import re
 import sys
 
-from papertoy import read_bam
+# Find papertoy beside this file even in Python's isolated mode (-I), which
+# does not put the script's folder on the import path.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from papertoy import read_bam  # noqa: E402
 
 PREVIEW_LINES = 14
 PREVIEW_WIDTH = 160

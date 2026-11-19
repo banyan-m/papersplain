@@ -109,6 +109,13 @@ for (const asset of [
 	path.join("src", "agent", "prompts", "guide", "00-base.md"),
 	path.join("src", "agent", "subagents", "toy-data", "checkdata.py"),
 	path.join("src", "agent", "subagents", "toy-data", "papertoy.py"),
+	path.join("src", "agent", "subagents", "toy-data", "build_h5.py"),
+	path.join("src", "agent", "subagents", "toy-data", "scene_check.py"),
+	path.join("node_modules", "pyodide", "pyodide.mjs"),
+	path.join("node_modules", "pyodide", "pyodide.asm.mjs"),
+	path.join("node_modules", "pyodide", "pyodide.asm.wasm"),
+	path.join("node_modules", "pyodide", "python_stdlib.zip"),
+	path.join("node_modules", "pyodide", "pyodide-lock.json"),
 	path.join("src", "agent", "prompts", "side-chat", "00-base.md"),
 	path.join("src", "agent", "prompts", "side-chat", "90-style.md"),
 ]) {
