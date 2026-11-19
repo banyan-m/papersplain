@@ -123,7 +123,7 @@ export function KeyboardShortcuts() {
 			// ride the window event for the mounted surface to catch.
 			switch (action) {
 				case "new-session":
-					handlersRef.current.router.push("/chat/new");
+					handlersRef.current.router.push("/subject/new");
 					break;
 				case "open-settings":
 					// Settings-app wave: the dialog is the surface, the URL is

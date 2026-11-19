@@ -49,6 +49,11 @@ export interface SubjectRecord {
 
 export const CURRENT_SUBJECT_VERSION = 1;
 
+/** A subject's address, on one of its modes. */
+export function subjectHref(id: string, mode: SubjectMode): string {
+	return `/subject/${encodeURIComponent(id)}?mode=${mode}`;
+}
+
 /** Which agent runs a mode. A paper's walkthrough and chat are the guide in
  *  that mode. A topic's walkthrough is the teaching session (probe, plan,
  *  teach); its chat is the guide without a paper. Practice is practice. */

@@ -95,6 +95,7 @@ import { readPluginProblemSubmission, pluginProblemById } from "@/src/core";
 import { ThinkingCard, ProblemCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
+import { ModeSwitch, ProgressButton, type SubjectView } from "@/components/mode-switch";
 import { PluginSessionTopBarActions } from "@/components/plugin-chrome";
 import { usePluginShortcutPage } from "@/components/plugin-shortcuts";
 import { createPluginSessionActionContext, type PluginSessionViewInput } from "@/src/core";
@@ -272,7 +273,12 @@ export function Chat({
 	initialConfigured = false,
 	kind = "teach",
 	paperMode,
+	subject,
 }: {
+	/** papersplainer: the paper or topic this conversation belongs to. With
+	 *  it the header shows the subject's name, the centered mode switch and
+	 *  the Progress button; the name's rename renames the subject. */
+	subject?: SubjectView;
 	chatId: string;
 	title: string;
 	initialMessages: LhMessage[];
@@ -315,7 +321,9 @@ export function Chat({
 	const controller = useOptionalInteractionLayers();
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const pathname = usePathname();
-	const surfaceTarget = usePageSurfaceBoundary({ active: pathname === `/chat/${encodeURIComponent(chatId)}`, viewKey: chatId, bodyRef: sessionFindScopeRef });
+	// The page this conversation is mounted on: its subject's, or its own.
+	const ownPath = subject ? `/subject/${encodeURIComponent(subject.id)}` : `/chat/${encodeURIComponent(chatId)}`;
+	const surfaceTarget = usePageSurfaceBoundary({ active: pathname === ownPath, viewKey: chatId, bodyRef: sessionFindScopeRef });
 	const { manager: pluginManager } = usePlugins();
 	const [, submissionChanged] = useState(0);
 	const [preparationError, setPreparationError] = useState<string>();
@@ -383,7 +391,7 @@ export function Chat({
 			const t = next.trim();
 			if (t === "" || t === titleText) return; // empty commit = discard
 			try {
-				const res = await fetch(`/api/chats/${chatId}`, {
+				const res = await fetch(subject ? `/api/subjects/${subject.id}` : `/api/chats/${chatId}`, {
 					method: "PUT",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ title: t }),
@@ -391,13 +399,15 @@ export function Chat({
 				if (!res.ok) throw new Error(`rename failed: ${res.status}`);
 				setTitleText(t);
 				window.dispatchEvent(
-					new CustomEvent("lh:chat-renamed", { detail: { id: chatId, title: t } }),
+					subject
+						? new CustomEvent("lh:subject-renamed", { detail: { id: subject.id, title: t } })
+						: new CustomEvent("lh:chat-renamed", { detail: { id: chatId, title: t } }),
 				);
 			} catch (err) {
 				console.error("rename failed:", err); // keep the old title
 			}
 		},
-		[chatId, titleText],
+		[chatId, titleText, subject],
 	);
 
 	// Select-all when edit mode opens: the click means "replace", so the
@@ -1596,7 +1606,7 @@ export function Chat({
 		return captured;
 	};
 
-	usePluginShortcutPage(`/chat/${encodeURIComponent(chatId)}`, captureActionContext);
+	usePluginShortcutPage(ownPath, captureActionContext);
 
 	return (
 		<ChatActionsContext.Provider
@@ -1640,6 +1650,7 @@ export function Chat({
 					// never fire. Rename mode is interactive mode (owner ask) —
 					// TopBar's one escape hatch.
 					drag={!renaming}
+					center={subject && !renaming ? <ModeSwitch subject={subject} /> : undefined}
 					onMouseDown={(e) => {
 						// Escape hitbox: any mousedown outside the input itself blurs
 						// it, running the existing onBlur commit path. The input is
@@ -1670,7 +1681,7 @@ export function Chat({
 								data-plugin-chrome-title
 								aria-label="Session title"
 								title="Rename this session"
-								className="lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-title text-3xl tracking-tight caret-current outline-none [field-sizing:content]"
+								className={subject ? "lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-title text-base caret-current outline-none [field-sizing:content]" : "lh-no-drag min-w-[8ch] max-w-[70%] shrink-0 bg-transparent font-title text-3xl tracking-tight caret-current outline-none [field-sizing:content]"}
 							/>
 							{/* flex-1 spacer during rename too, so the chips stay at
 							    the right edge; clicks here commit via the header
@@ -1692,7 +1703,7 @@ export function Chat({
 								setRenaming(true);
 							}}
 							data-plugin-chrome-title
-							className="lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title text-3xl tracking-tight transition-colors hover:bg-accent"
+							className={subject ? "lh-no-drag -mx-1.5 min-w-4 max-w-[calc(50%-11rem)] shrink cursor-text truncate rounded-md px-1.5 py-0.5 text-left font-title text-base text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" : "lh-no-drag -mx-1.5 min-w-4 shrink cursor-text truncate rounded-md px-1.5 text-left font-title text-3xl tracking-tight transition-colors hover:bg-accent"}
 						>
 							{titleText}
 							</button>
@@ -1731,7 +1742,7 @@ export function Chat({
 					{kind !== "practice" && <CoverageRing chatId={chatId} refreshKey={coverageTick} />}
 					{/* Practice sessions: no phase arc — a quiet Practice tag
 					    instead of the phase chip. */}
-					{kind === "practice" ? (
+					{subject && kind !== "teach" ? null : kind === "practice" ? (
 						<span
 							data-testid="phase-chip"
 							data-phase="practice"
@@ -1755,6 +1766,7 @@ export function Chat({
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
 					<PluginSessionTopBarActions readContext={actionContext} captureContext={captureActionContext} refreshRef={refreshPluginActions} />
+					{subject && <ProgressButton subject={subject} />}
 				</TopBar>
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />

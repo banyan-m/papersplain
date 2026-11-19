@@ -40,11 +40,15 @@ export const TRACES_COPY = {
  */
 export function DeleteSessionDialog({
 	chat,
+	subject,
 	onClose,
 	onDeleted,
 }: {
 	/** The session up for deletion; null = closed. */
 	chat: Pick<ChatListItem, "id" | "title"> | null;
+	/** papersplainer: set when the thing being deleted is a whole paper or
+	 *  topic (every conversation in it) rather than one session. */
+	subject?: "paper" | "topic";
 	onClose: () => void;
 	/** Success path — the sidebar owns navigation + list patching. */
 	onDeleted: (id: string, mode: ChatDeleteMode, graphRevision: number) => void;
@@ -72,7 +76,7 @@ export function DeleteSessionDialog({
 		setBusy(true);
 		setFailure(null);
 		try {
-			const res = await fetch(`/api/chats/${chat.id}?mode=${mode}`, { method: "DELETE" });
+			const res = await fetch(`/api/${subject ? "subjects" : "chats"}/${chat.id}?mode=${mode}`, { method: "DELETE" });
 			const body = (await res.json()) as {
 				ok?: boolean;
 				error?: string;
@@ -97,6 +101,7 @@ export function DeleteSessionDialog({
 
 	return <DeleteSessionBody
 				chat={chat}
+				subject={subject}
 				traces={traces}
 				busy={busy}
 				failure={failure}
@@ -114,6 +119,7 @@ export function DeleteSessionDialog({
  *  node-dialog body pattern). The wrapper owns state + effects + portal. */
 export function DeleteSessionBody({
 	chat,
+	subject,
 	traces,
 	busy,
 	failure,
@@ -123,6 +129,7 @@ export function DeleteSessionBody({
 	renderFrame,
 }: {
 	chat: Pick<ChatListItem, "id" | "title">;
+	subject?: "paper" | "topic";
 	/** The graph-traces checkbox — unchecked by default (preserve-graph). */
 	traces: boolean;
 	busy: boolean;
@@ -136,12 +143,12 @@ export function DeleteSessionBody({
 		<div
 			role="dialog"
 			aria-modal="true"
-			aria-label="Delete session"
+			aria-label={subject ? `Delete ${subject}` : "Delete session"}
 			data-testid="delete-session-dialog"
 			onClick={(e) => e.stopPropagation()}
 			className="w-[32rem] max-w-[calc(100vw-2rem)] rounded-xl border bg-card p-5 shadow-xl"
 		>
-			<h2 className="text-sm font-semibold text-destructive">Delete session?</h2>
+			<h2 className="text-sm font-semibold text-destructive">{subject ? `Delete ${subject}?` : "Delete session?"}</h2>
 			{/* The session name below the title in JetBrains Mono (owner,
 			    2026-09-24): no code-block chrome — the font already says
 			    code. Owner, 2026-10-13 polish: normal text-sm size (was
@@ -153,8 +160,9 @@ export function DeleteSessionBody({
 				</code>
 			</div>
 			<p className="mt-2 text-sm text-muted-foreground">
-				This permanently removes the session — its messages, background jobs, and extraction records. Everything
-				it added to the graph stays unless you check below. This cannot be undone.
+				{subject
+					? `This permanently removes the ${subject} and every conversation in it (walkthrough, chat, and practice), with their background jobs and extraction records.${subject === "paper" ? " The paper's cached figures and data are kept." : ""} Everything the conversations added to the graph stays unless you check below. This cannot be undone.`
+					: "This permanently removes the session — its messages, background jobs, and extraction records. Everything it added to the graph stays unless you check below. This cannot be undone."}
 			</p>
 			<label
 				data-testid={TRACES_COPY.testid}

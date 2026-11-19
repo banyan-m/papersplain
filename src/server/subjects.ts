@@ -24,6 +24,7 @@ import {
 import type { GraphContextPick } from "../core/native-messages.ts";
 import { chatPaperKey, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
 import { createSession, deleteChatSession, titleFromPrompt, type ChatDeleteMode, type ChatDeleteOutcome } from "./chats.ts";
+import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 
@@ -246,7 +247,7 @@ export function subjectPromptAppendix(chatId: string): string | undefined {
 }
 
 export type SubjectDeleteOutcome =
-	| { ok: true; chatsRemoved: number }
+	| { ok: true; chatsRemoved: number; graphRevision: number }
 	| { ok: false; status: number; code: string; error: string };
 
 /**
@@ -268,5 +269,5 @@ export async function deleteSubject(id: string, mode: ChatDeleteMode): Promise<S
 		chatsRemoved++;
 	}
 	stores.subjectStore.deleteSubject(id);
-	return { ok: true, chatsRemoved };
+	return { ok: true, chatsRemoved, graphRevision: graphRevision() };
 }

@@ -6,9 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
 import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ChatDeleteMode, ThemeMode } from "@/src/core";
-import { DumbbellIcon, FileTextIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
+import { DumbbellIcon, FileTextIcon, LightbulbIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PlusIcon, SearchIcon, SettingsIcon } from "lucide-react";
 import { ActivitySection } from "@/components/activity-dock";
-import { CoverageMenuBlock } from "@/components/extraction-coverage";
 import { LhMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
@@ -19,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fuzzyScore } from "@/src/core";
 import { useServerEvent, useServerResync } from "@/components/server-events";
-import type { ChatListItem } from "@/src/core";
+import type { ChatListItem, SubjectListItem } from "@/src/core";
 import { kbdEventForAction } from "@/src/core";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { PluginWidgets } from "@/components/plugins";
@@ -350,7 +349,7 @@ export function SessionRow({
  *  title line becomes a text input — select-all on entry (the click means
  *  "replace", the header rename's rule), Enter/blur commits, Esc discards.
  *  The meta line stays so the row never changes height mid-edit. */
-export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; onCommit: (next: string) => void; onCancel: () => void }) {
+export function RenameRow({ chat, meta, onCommit, onCancel }: { chat: ChatListItem | Pick<ChatListItem, "title">; /** The second line; defaults to the session meta. */ meta?: string; onCommit: (next: string) => void; onCancel: () => void }) {
 	const [draft, setDraft] = useState(chat.title);
 	const interactions = useOptionalInteractionLayers();
 	const inputRef = useRef<HTMLInputElement | null>(null);
@@ -393,32 +392,71 @@ export function RenameRow({ chat, onCommit, onCancel }: { chat: ChatListItem; on
 					data-testid="session-rename-input"
 					className="lh-input w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 text-foreground outline-none"
 				/>
-				<span className="block truncate text-xs text-muted-foreground">{sessionMeta(chat)}</span>
+				<span className="block truncate text-xs text-muted-foreground">{meta ?? ("updatedAt" in chat ? sessionMeta(chat) : "")}</span>
 			</span>
 		</div>
 	);
 }
 
-/** The three-way kind filter (practice sessions, owner 2026-10-04):
- *  Teaching / All / Practice — a client-side filter over the same
- *  snapshot, persisted in localStorage, defaulting to All. */
-export type SessionKindFilter = "teach" | "all" | "practice";
-const KIND_FILTER_KEY = "lh:session-kind-filter";
+/** A paper or topic row's second line: what is waiting, else how long ago. */
+export function subjectMeta(subject: SubjectListItem): string {
+	if (subject.pendingQuestion) return `Waiting for input · ${timeAgo(subject.updatedAt)}`;
+	if (subject.pendingProblem) return `Problem waiting · ${timeAgo(subject.updatedAt)}`;
+	if (subject.busy) return "Working…";
+	return timeAgo(subject.updatedAt);
+}
+
+/**
+ * One paper or topic row (papersplainer, owner 2026-11-19): the kind icon,
+ * then title + state-aware meta; the spinner only while a turn is in flight
+ * in one of its conversations. Exported for render tests — a pure function
+ * of the list item.
+ */
+export function SubjectRow({
+	subject,
+	active,
+	onOpen,
+	kbdSelected = false,
+	onContextMenu,
+}: {
+	subject: SubjectListItem;
+	active: boolean;
+	onOpen: () => void;
+	kbdSelected?: boolean;
+	onContextMenu?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+}) {
+	const Icon = subject.kind === "paper" ? FileTextIcon : LightbulbIcon;
+	return (
+		<button
+			type="button"
+			onClick={onOpen}
+			onContextMenu={onContextMenu}
+			data-testid={kbdSelected ? "subject-row-kbd" : "subject-row"}
+			data-kind={subject.kind}
+			className={cn(
+				"relative mb-0.5 flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent",
+				active && "bg-accent",
+				kbdSelected && !active && "bg-accent/60 ring-1 ring-border",
+			)}
+		>
+			<Icon className="mt-1 size-3.5 shrink-0 text-muted-foreground/70" aria-label={subject.kind === "paper" ? "Paper" : "Topic"} />
+			<span className="min-w-0 flex-1">
+				<span className="block truncate font-prose text-(length:--lh-prose-size)">{subject.title}</span>
+				<span className="block text-xs text-muted-foreground">{subjectMeta(subject)}</span>
+			</span>
+			<SessionStatus busy={subject.busy} />
+		</button>
+	);
+}
 
 function SessionsSidebar() {
 	const interactions = useInteractionLayers();
 	const { open, toggle } = useSidebar();
-	const [chats, setChats] = useState<ChatListItem[] | null>(null);
+	// papersplainer (owner, 2026-11-19): the list is papers and topics, one
+	// mixed list by recent activity. The Teaching/Practice/All filter and
+	// the three create buttons are gone; conversations live inside a subject.
+	const [chats, setChats] = useState<SubjectListItem[] | null>(null);
 	const [query, setQuery] = useState("");
-	const [kindFilter, setKindFilter] = useState<SessionKindFilter>("all");
-	useEffect(() => {
-		const stored = window.localStorage.getItem(KIND_FILTER_KEY);
-		if (stored === "teach" || stored === "all" || stored === "practice") setKindFilter(stored);
-	}, []);
-	const setFilter = useCallback((f: SessionKindFilter) => {
-		setKindFilter(f);
-		window.localStorage.setItem(KIND_FILTER_KEY, f);
-	}, []);
 	const pathname = usePathname();
 	const router = useRouter();
 	const { open: openSettings } = useSettingsDialog();
@@ -428,7 +466,7 @@ function SessionsSidebar() {
 	   message is sent (and that message becomes its title). Search: a
 	   client-side filter over the poll snapshot — no server round trip. */
 	const newSession = useCallback(() => {
-		router.push("/chat/new");
+		router.push("/subject/new");
 	}, [router]);
 
 	/* FUZZY (owner round 8, 2026-10-05): subsequence match ranked by
@@ -436,10 +474,7 @@ function SessionsSidebar() {
 	 * keeps the natural list order (scores are all 0, sort is stable). */
 	const shown = useMemo(() => {
 		const q = query.trim();
-		let list = chats;
-		if (list && kindFilter !== "all") {
-			list = list.filter((c) => (c.kind ?? "teach") === kindFilter);
-		}
+		const list = chats;
 		if (!list) return list;
 		if (!q) return list;
 		return list
@@ -447,7 +482,7 @@ function SessionsSidebar() {
 			.filter((r): r is { c: (typeof list)[number]; score: number } => r.score !== null)
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
-	}, [chats, query, kindFilter]);
+	}, [chats, query]);
 
 	const refreshInFlightRef = useRef(false);
 	const refresh = useCallback(async () => {
@@ -457,9 +492,9 @@ function SessionsSidebar() {
 		if (refreshInFlightRef.current) return;
 		refreshInFlightRef.current = true;
 		try {
-			const res = await fetch("/api/chats", { cache: "no-store" });
-			const d = (await res.json()) as { chats: ChatListItem[] };
-			setChats(d.chats);
+			const res = await fetch("/api/subjects", { cache: "no-store" });
+			const d = (await res.json()) as { subjects: SubjectListItem[] };
+			setChats(d.subjects);
 		} catch {
 			// a transient failure keeps the last snapshot
 			setChats((prev) => prev ?? []);
@@ -476,8 +511,8 @@ function SessionsSidebar() {
 			const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
 			setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, title } : c)) : prev));
 		};
-		window.addEventListener("lh:chat-renamed", onRenamed);
-		return () => window.removeEventListener("lh:chat-renamed", onRenamed);
+		window.addEventListener("lh:subject-renamed", onRenamed);
+		return () => window.removeEventListener("lh:subject-renamed", onRenamed);
 	}, []);
 
 	/* INSTANT TURN-STATE (owner, sidebar round 2026-10-02): the open
@@ -490,22 +525,10 @@ function SessionsSidebar() {
 	   knows: other windows, wake turns in unopened sessions. A start on
 	   a chat not yet in the snapshot (a brand-new session) = one
 	   immediate refresh instead of a patch. */
-	const chatsRef = useRef(chats);
-	chatsRef.current = chats;
 	useEffect(() => {
-		const onTurnState = (e: Event) => {
-			const { id, running } = (e as CustomEvent<{ id: string; running: boolean }>).detail;
-			if (running) {
-				if (chatsRef.current?.some((c) => c.id === id)) {
-					setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, busy: true } : c)) : prev));
-				} else {
-					void refresh(); // the brand-new session: it isn't in the snapshot yet
-				}
-				return;
-			}
-			setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, busy: false } : c)) : prev));
-			void refresh(); // settle: the server snapshot is now truthful — land it now
-		};
+		// The event names a conversation, and a row is a subject (its
+		// conversations are not in this snapshot): land the server's truth.
+		const onTurnState = () => { void refresh(); };
 		window.addEventListener("lh:turn-state", onTurnState);
 		return () => window.removeEventListener("lh:turn-state", onTurnState);
 	}, [refresh]);
@@ -566,9 +589,9 @@ function SessionsSidebar() {
 	const [ctxChatId, setCtxChatId] = useState<string | null>(null);
 	const ctxAnchorRef = useRef<HTMLElement | null>(null);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
-	const [deleting, setDeleting] = useState<ChatListItem | null>(null);
+	const [deleting, setDeleting] = useState<SubjectListItem | null>(null);
 
-	const openContext = (e: React.MouseEvent<HTMLButtonElement>, chat: ChatListItem) => {
+	const openContext = (e: React.MouseEvent<HTMLButtonElement>, chat: SubjectListItem) => {
 		e.preventDefault(); // suppress the native menu
 		ctxAnchorRef.current = e.currentTarget;
 		setCtxChatId(chat.id);
@@ -601,13 +624,13 @@ function SessionsSidebar() {
 		const t = next.trim();
 		if (t === "") return;
 		try {
-			const res = await fetch(`/api/chats/${id}`, {
+			const res = await fetch(`/api/subjects/${id}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ title: t }),
 			});
 			if (!res.ok) throw new Error(`rename failed: ${res.status}`);
-			window.dispatchEvent(new CustomEvent("lh:chat-renamed", { detail: { id, title: t } }));
+			window.dispatchEvent(new CustomEvent("lh:subject-renamed", { detail: { id, title: t } }));
 		} catch (err) {
 			console.error("rename failed:", err); // keep the old title
 		}
@@ -622,7 +645,7 @@ function SessionsSidebar() {
 		(id: string, _mode: ChatDeleteMode, graphRevision: number) => {
 			setDeleting(null);
 			setChats((prev) => (prev ? prev.filter((c) => c.id !== id) : prev));
-			if (pathname === `/chat/${id}`) router.push("/");
+			if (pathname === `/subject/${id}`) router.push("/");
 			window.dispatchEvent(new CustomEvent("lh:graph-revision", { detail: { revision: graphRevision } }));
 		},
 		[pathname, router],
@@ -705,42 +728,19 @@ function SessionsSidebar() {
 				<PluginSidebarActions>
 					<button
 						type="button"
-						data-testid="new-session"
-						title="Teaching"
+						data-testid="new-subject"
+						title="New paper or topic"
 						onClick={() => void newSession()}
-						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
 					>
-						<PlusIcon className="size-3 shrink-0" />
-						<span className="min-w-0 truncate">Teaching</span>
-						<span className="sr-only">create a new teaching session</span>
-					</button>
-					<button
-						type="button"
-						data-testid="new-session-practice"
-						title="Practice"
-						onClick={() => router.push("/chat/new?mode=practice")}
-						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<DumbbellIcon className="size-3 shrink-0" />
-						<span className="min-w-0 truncate">Practice</span>
-						<span className="sr-only">create a new practice session</span>
-					</button>
-					<button
-						type="button"
-						data-testid="new-session-paper"
-						title="Paper"
-						onClick={() => router.push("/chat/new?mode=paper")}
-						className="flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-					>
-						<FileTextIcon className="size-3 shrink-0" />
-						<span className="min-w-0 truncate">Paper</span>
-						<span className="sr-only">create a new paper session</span>
+						<PlusIcon className="size-3.5 shrink-0" />
+						<span className="min-w-0 truncate">New</span>
+						<span className="sr-only">paper or topic</span>
 					</button>
 				</PluginSidebarActions>
 
 				<div className="mx-3 mb-2 flex items-center gap-2">
-					<span className="text-xs text-muted-foreground/70">Sessions</span>
-					<Hint label="Search sessions" action="sessions-search" side="bottom">
+					<Hint label="Search papers and topics" action="sessions-search" side="bottom">
 					<span className="relative flex-1">
 						<Input
 							ref={searchRef}
@@ -787,13 +787,13 @@ function SessionsSidebar() {
 									const target = shown![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
 									if (!target) return;
 									e.preventDefault();
-									router.push(`/chat/${target.id}`);
+									router.push(`/subject/${target.id}`);
 									setKbdIndex(null);
 									e.currentTarget.blur();
 								}
 							}}
 							placeholder="Search…"
-							aria-label="Search sessions"
+							aria-label="Search papers and topics"
 							className="h-6 rounded-sm border-border bg-background pl-6 text-xs placeholder:text-muted-foreground/60"
 						/>
 						<SearchIcon className="pointer-events-none absolute left-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" />
@@ -801,38 +801,12 @@ function SessionsSidebar() {
 					</Hint>
 				</div>
 
-				{/* The three-way filter, HEADING THE LIST (owner round 8b,
-				    2026-10-05 — moved below the search): it scopes what the
-				    list shows, so it sits directly above it as a caption row;
-				    search stays the top muscle-memory target. Order: Teaching /
-				    Practice / All — the real modes first, "All" as the escape
-				    hatch on the right, mirroring the create-buttons above.
-				    Persisted client-side. */}
-				<div className="mx-3 flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="session-kind-filter">
-					{(["teach", "practice", "all"] as const).map((f) => (
-						<button
-							key={f}
-							type="button"
-							data-testid={`kind-filter-${f}`}
-							onClick={() => setFilter(f)}
-							className={cn(
-								"flex-1 rounded-sm px-2 py-1 text-[11px] transition-colors",
-								kindFilter === f
-									? "bg-accent text-foreground"
-									: "text-muted-foreground hover:text-foreground",
-							)}
-						>
-							{f === "teach" ? "Teaching" : f === "all" ? "All" : "Practice"}
-						</button>
-					))}
-				</div>
-
 				<div ref={listRef} className="flex-1 overflow-y-auto p-2">
 					{shown === null ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">Loading…</div>
 					) : shown.length === 0 ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">
-							{query.trim() ? "No sessions match." : "No sessions yet."}
+							{query.trim() ? "Nothing matches." : "No papers or topics yet."}
 						</div>
 					) : (
 						shown.map((c, i) =>
@@ -840,18 +814,19 @@ function SessionsSidebar() {
 								<RenameRow
 									key={c.id}
 									chat={c}
+									meta={subjectMeta(c)}
 									onCommit={(next) => void commitRename(c.id, next)}
 									onCancel={() => setRenamingId(null)}
 								/>
 							) : (
-								<SessionRow
+								<SubjectRow
 									key={c.id}
-									chat={c}
-									active={pathname === `/chat/${c.id}`}
+									subject={c}
+									active={pathname === `/subject/${c.id}`}
 									kbdSelected={i === kbdIndex}
 									onOpen={() => {
 										setKbdIndex(null);
-										router.push(`/chat/${c.id}`);
+										router.push(`/subject/${c.id}`);
 									}}
 									onContextMenu={(e) => openContext(e, c)}
 								/>
@@ -913,28 +888,6 @@ function SessionsSidebar() {
 						>
 							Rename
 						</button>
-						{/* Export as Markdown (owner, release polish 2026-10-06): the
-					    session-markdown engine's user-facing debut — same-origin
-						    anchor download; the route's Content-Disposition names the
-						    file. Sits with the management actions, above Delete (the
-						    destructive action stays last — the danger-fence law). */}
-						<button
-							type="button"
-							data-testid="ctx-export-md"
-							onClick={() => {
-								const chatId = ctxChatId;
-								setCtxChatId(null);
-								const a = document.createElement("a");
-								a.href = `/api/chats/${chatId}/markdown`;
-								a.download = ""; // the route's filename wins
-								document.body.appendChild(a);
-								a.click();
-								a.remove();
-							}}
-							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent"
-						>
-							Export as Markdown…
-						</button>
 						<button
 							type="button"
 							data-testid="ctx-delete"
@@ -947,8 +900,6 @@ function SessionsSidebar() {
 						>
 							Delete…
 						</button>
-						<div className="my-0.5 border-t border-border/60" aria-hidden="true" />
-						<CoverageMenuBlock chatId={ctxChatId} />
 					</MenuShell>
 				)}
 
@@ -956,6 +907,7 @@ function SessionsSidebar() {
 				    by the component itself, lives here for state locality. */}
 				<DeleteSessionDialog
 					chat={deleting}
+					subject={deleting?.kind}
 					onClose={() => setDeleting(null)}
 					onDeleted={onDeleted}
 				/>

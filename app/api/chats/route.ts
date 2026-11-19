@@ -1,4 +1,4 @@
-import { compactionInFlight, createSession, graphPicksOf, isTurnRunning, listChats } from "@/src/server";
+import { compactionInFlight, createSession, fileLooseChats, graphPicksOf, isTurnRunning, listChats } from "@/src/server";
 import type { ChatListItem } from "@/src/core";
 
 /** The session picker's list: record-derived summaries (phase, pending
@@ -31,5 +31,9 @@ export async function POST(req: Request) {
 		paperMode: body.paperMode === "chat" ? "chat" : "walkthrough",
 		picks: graphPicksOf((body.graphContext as { propositions?: unknown } | undefined)?.propositions),
 	});
+	// papersplainer: a session born outside a subject (the home screen's
+	// composer) is filed at once as its own topic, so its page opens with
+	// the subject header instead of waiting for the next list read.
+	fileLooseChats();
 	return Response.json({ id: chat.id, title: chat.title });
 }

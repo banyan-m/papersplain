@@ -249,7 +249,10 @@ describe("rename and delete", () => {
 
 		const res = await deleteRoute(new Request(`http://test/api/subjects/${made.id}?mode=preserve-graph`, { method: "DELETE" }), idParams(made.id));
 		assert.equal(res.status, 200);
-		assert.deepEqual(await res.json(), { ok: true, chatsRemoved: 3 });
+		const done = (await res.json()) as { ok: boolean; chatsRemoved: number; graphRevision: number };
+		assert.equal(done.ok, true);
+		assert.equal(done.chatsRemoved, 3);
+		assert.equal(typeof done.graphRevision, "number");
 		assert.equal(getSubject(made.id), null);
 		for (const id of [made.chatId, chat.body.id!, shelved.id]) assert.equal(chatStore.getChat(id), null);
 

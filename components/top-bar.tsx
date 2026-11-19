@@ -47,8 +47,12 @@ export function TopBar({
 	drag = true,
 	onMouseDown,
 	children,
+	center,
 	sidebarToggle = true,
 }: {
+	/** papersplainer: content centered in the bar regardless of what sits
+	 *  left and right of it (the mode switch). Not a drag surface. */
+	center?: ReactNode;
 	drag?: boolean;
 	onMouseDown?: React.MouseEventHandler<HTMLElement>;
 	children?: ReactNode;
@@ -82,10 +86,11 @@ export function TopBar({
 		<header
 			ref={header}
 			onMouseDown={onMouseDown}
-			className={`${drag ? "lh-drag " : ""}${sidebarToggle ? "" : "lh-native-window-clearance "}lh-wco-gutter flex h-15 select-none items-center gap-3 border-b border-border px-3`}
+			className={`${drag ? "lh-drag " : ""}${sidebarToggle ? "" : "lh-native-window-clearance "}lh-wco-gutter relative flex h-15 select-none items-center gap-3 border-b border-border px-3`}
 		>
 			{sidebarToggle && <SidebarToggle />}
 			{children}
+			{center && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><div className="pointer-events-auto">{center}</div></div>}
 		</header>
 	);
 }

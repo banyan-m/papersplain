@@ -15,8 +15,10 @@ import { useModelSetup, selectedModelUnavailable, openModelPicker, ZeroKeysPill 
 import { StatsBar } from "@/components/stats-bar";
 import { ChainTableOverlay } from "@/components/chain-table.tsx";
 import { ComposerActions, NodePickerControl } from "@/components/composer-actions";
-import { OPENING_PROMPT_FAILURE } from "@/components/opening-prompt";
+import { OPENING_PROMPT_FAILURE, stashOpeningPrompt } from "@/components/opening-prompt";
 import { SessionStarter } from "@/components/start-session";
+import { ModeSwitch, ProgressButton, type SubjectView } from "@/components/mode-switch";
+import { subjectHref } from "@/src/core";
 import type { ChatSettings, GraphSnapshot } from "@/src/core";
 
 /** The draft's pick set (owner round 10): the SAME shape the home pick
@@ -69,6 +71,70 @@ export async function startDraftSession(
 	);
 }
 
+/** What a subject draft says before its first message, per kind and mode. */
+export function subjectDraftCopy(subject: SubjectView | null): { title: string; description: string; placeholder: string } {
+	if (!subject) {
+		return {
+			title: "New paper or topic",
+			description: "Paste a paper's link or PDF path to study the paper, or type a topic you want to learn.",
+			placeholder: "Paper link, PDF path, or a topic",
+		};
+	}
+	const paper = subject.kind === "paper";
+	if (subject.mode === "chat") {
+		return {
+			title: paper ? "Ask about this paper" : "Ask about this topic",
+			description: paper ? "You lead. Ask anything about the paper and the guide answers from it." : "You lead. Ask anything about the topic.",
+			placeholder: paper ? "Ask about the paper" : "Ask about the topic",
+		};
+	}
+	if (subject.mode === "practice") {
+		return {
+			title: paper ? "Practice this paper" : "Practice this topic",
+			description: paper
+				? "Problems on the paper's method, claims, and evidence. Say what to focus on, or say start."
+				: "Problems on what you've covered in this topic. Say what to focus on, or say start.",
+			placeholder: "What do you want to practice?",
+		};
+	}
+	return {
+		title: paper ? "Start the walkthrough" : "Start the walkthrough",
+		description: paper
+			? "The guide walks you through the paper one section at a time, with visuals, and pauses after each."
+			: "The teacher opens by finding out what you already know, then teaches step by step.",
+		placeholder: paper ? "Say start, or name where to begin" : "What do you want to learn about it?",
+	};
+}
+
+/**
+ * The first message of a subject draft. With no subject yet (the New box)
+ * the text creates the paper or topic and its walkthrough; inside a subject
+ * it gives the mode on screen its conversation. Either way the full text is
+ * handed over for delivery as the opening message, then the subject's page
+ * is the target. Null for empty text; throws when creation or the handover
+ * fails (the caller keeps the draft).
+ */
+export async function startSubjectDraft(text: string, subject: SubjectView | null, fetchLike: typeof fetch): Promise<string | null> {
+	const t = text.trim();
+	if (!t) return null;
+	const post = (url: string, body: unknown) => fetchLike(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+	if (!subject) {
+		const res = await post("/api/subjects", { text: t });
+		if (!res.ok) throw new Error(OPENING_PROMPT_FAILURE);
+		const made = (await res.json()) as { id?: unknown; chatId?: unknown; opening?: unknown };
+		if (typeof made.id !== "string" || typeof made.chatId !== "string") throw new Error(OPENING_PROMPT_FAILURE);
+		// A paper already in the list is reopened: nothing is sent again.
+		if (made.opening !== false && !stashOpeningPrompt(made.chatId, t)) throw new Error(OPENING_PROMPT_FAILURE);
+		return subjectHref(made.id, "walkthrough");
+	}
+	const res = await post(`/api/subjects/${encodeURIComponent(subject.id)}/chats`, { mode: subject.mode, title: t });
+	if (!res.ok) throw new Error(OPENING_PROMPT_FAILURE);
+	const made = (await res.json()) as { id?: unknown };
+	if (typeof made.id !== "string") throw new Error(OPENING_PROMPT_FAILURE);
+	if (!stashOpeningPrompt(made.id, t)) throw new Error(OPENING_PROMPT_FAILURE);
+	return subjectHref(subject.id, subject.mode);
+}
+
 /** The pure shell (no router) — the render-test seam: the draft view's
  *  visible surface, assembled from the same pieces a fresh chat shows. */
 /* FINISH-FIRST SEND + RUN-END FOCUS live in the shell (it owns the
@@ -88,7 +154,12 @@ export function DraftShell({
 	onOpenPicker,
 	onClearPicks,
 	overlay,
+	subject,
 }: {
+	/** papersplainer: undefined = the plain session draft (/chat/new);
+	 *  null = the New box (no paper or topic yet); a subject = the first
+	 *  screen of one of its modes, with the mode switch on top. */
+	subject?: SubjectView | null;
 	/** papersplainer: the paper draft's walkthrough | free chat switch. */
 	paperMode?: "walkthrough" | "chat";
 	onPaperMode?: (mode: "walkthrough" | "chat") => void;
@@ -122,7 +193,8 @@ export function DraftShell({
 	const controller = useOptionalInteractionLayers();
 	const pathname = usePathname();
 	const bodyRef = useRef<HTMLDivElement>(null);
-	const surfaceTarget = usePageSurfaceBoundary({ active: pathname === "/chat/new", viewKey: "/chat/new", bodyRef });
+	const subjectCopy = subject === undefined ? null : subjectDraftCopy(subject);
+	const surfaceTarget = usePageSurfaceBoundary({ active: pathname === "/chat/new" || (pathname?.startsWith("/subject/") ?? false), viewKey: "/chat/new", bodyRef });
 	const chromeStyle = useSurfaceChromeStyle(surfaceTarget);
 	// Voice dictation (STT wave, 2026-09-17): finals append at the end of the
 	// draft text (via the parent's onChange — the truth lives there); the
@@ -186,9 +258,9 @@ export function DraftShell({
 						<Conversation className="h-full min-w-0 flex-1" initial="instant">
 							<ConversationContent className="min-h-full gap-0 p-0">
 								<ConversationEmptyState
-									title={mode === "practice" ? "New practice session" : mode === "paper" ? "New paper session" : "New session"}
+									title={subjectCopy ? subjectCopy.title : mode === "practice" ? "New practice session" : mode === "paper" ? "New paper session" : "New session"}
 									description={
-										mode === "practice"
+										subjectCopy ? subjectCopy.description : mode === "practice"
 											? "Pick nodes from your knowledge graph, describe what you want to practice, or bring your own problem."
 											: mode === "paper"
 												? paperMode === "chat"
@@ -203,7 +275,7 @@ export function DraftShell({
 						<div className="bg-background pb-4">
 							<div className={DOCK}>
 								<ComposerActions
-									picker={(picks.length > 0 || mode === "practice") && (
+									picker={!subjectCopy && (picks.length > 0 || mode === "practice") && (
 										<NodePickerControl count={picks.length} onOpen={onOpenPicker} onClear={onClearPicks} />
 									)}
 									setup={setupCta}
@@ -224,13 +296,13 @@ export function DraftShell({
 										// input (owner refinement round, 2026-09-24) — no lesson has
 										// started yet, so the composer must not read like one is in
 										// flight.
-										placeholder={mode === "practice" ? "What do you want to practice?" : mode === "paper" ? "Paste the paper's PDF path or link" : "What do you want to learn?"}
+										placeholder={subjectCopy ? subjectCopy.placeholder : mode === "practice" ? "What do you want to practice?" : mode === "paper" ? "Paste the paper's PDF path or link" : "What do you want to learn?"}
 									/>
 								</div>
 								<StatsBar
 									dictationSlot={<DictationBar dictation={dictation} />}
 									turns={[]}
-									leadingSlot={mode === "paper" ? (
+									leadingSlot={mode === "paper" && !subjectCopy ? (
 									<div className="pointer-events-auto flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="paper-mode-switch">
 										{(["walkthrough", "chat"] as const).map((m) => (
 											<button
@@ -261,16 +333,27 @@ export function DraftShell({
 			{/* The floating reopen toggle — pointer-events-none except the
 			    toggle itself (home's pattern), painted AFTER the overlay's
 			    column so nothing of it blocks the canvas area. */}
-			<header style={chromeStyle} className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2 px-3 py-2">
-				<div className="pointer-events-auto">
+			<header style={chromeStyle} className="pointer-events-none absolute inset-x-0 top-0 flex h-15 items-center gap-3 px-3">
+				<div className="pointer-events-auto empty:hidden">
 					<SidebarToggle />
 				</div>
+				{/* A mode's first screen keeps the subject's header: its name, the
+				    centered mode switch, the Progress button — the same places they
+				    hold once the conversation exists. */}
+				{subject && (
+					<>
+						<span data-testid="draft-subject-title" className="min-w-0 max-w-[calc(50%-11rem)] truncate font-title text-base text-muted-foreground">{subject.title}</span>
+						<div className="flex-1" />
+						<div className="pointer-events-auto"><ProgressButton subject={subject} /></div>
+						<div className="pointer-events-none absolute inset-0 flex items-center justify-center"><div className="pointer-events-auto"><ModeSwitch subject={subject} /></div></div>
+					</>
+				)}
 			</header>
 		</div>
 	);
 }
 
-export function NewSession({ initialConfigured, mode = "teach", initialPaperMode = "walkthrough" }: { initialConfigured: boolean; mode?: "teach" | "practice" | "paper"; initialPaperMode?: "walkthrough" | "chat" }) {
+export function NewSession({ initialConfigured, mode = "teach", initialPaperMode = "walkthrough", subject }: { initialConfigured: boolean; mode?: "teach" | "practice" | "paper"; initialPaperMode?: "walkthrough" | "chat"; /** See DraftShell. */ subject?: SubjectView | null }) {
 	const router = useRouter();
 	const [paperMode, setPaperMode] = useState<"walkthrough" | "chat">(initialPaperMode);
 	const paperModeRef = useRef(paperMode);
@@ -352,8 +435,10 @@ export function NewSession({ initialConfigured, mode = "teach", initialPaperMode
 		startingRef.current = true;
 		setBusy(true);
 		setStartError(false);
-		void startDraftSession(draft, fetch, mode === "practice" ? "practice" : mode === "paper" ? "paper" : undefined, mode === "practice" ? picksRef.current : undefined,
-			starterRef.current, JSON.stringify(catalog?.slots.strong), paperModeRef.current)
+		(subject !== undefined
+			? startSubjectDraft(draft, subject, fetch)
+			: startDraftSession(draft, fetch, mode === "practice" ? "practice" : mode === "paper" ? "paper" : undefined, mode === "practice" ? picksRef.current : undefined,
+				starterRef.current, JSON.stringify(catalog?.slots.strong), paperModeRef.current))
 			.then((target) => {
 				if (target) router.push(target);
 				else { startingRef.current = false; setBusy(false); }
@@ -363,7 +448,7 @@ export function NewSession({ initialConfigured, mode = "teach", initialPaperMode
 				setBusy(false);
 				setStartError(true);
 			});
-	}, [router, configured, zeroKeys, catalog, mode]);
+	}, [router, configured, zeroKeys, catalog, mode, subject]);
 
 	return (
 		<>
@@ -373,6 +458,7 @@ export function NewSession({ initialConfigured, mode = "teach", initialPaperMode
 				text={text}
 				onChange={applyText}
 				onSend={send}
+				subject={subject}
 				mode={mode}
 				paperMode={paperMode}
 				onPaperMode={applyPaperMode}

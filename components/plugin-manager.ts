@@ -553,7 +553,7 @@ export class PluginFrontendManager {
 		const pathname = this.host.pathname(), page = this.shortcutPages.get(pathname);
 		if (page) return page.read();
 		// A session/plugin page must supply its actual context, never a guessed one.
-		if (/^\/(chat|plugins)\//.test(pathname) && pathname !== "/chat/new") return;
+		if (/^\/(chat|subject|plugins)\//.test(pathname) && pathname !== "/chat/new" && pathname !== "/subject/new") return;
 		return { surface: "app", pathname };
 	}
 	async runAction(id: string, action: PluginAction, context: PluginActionContext | (() => PluginActionContext | undefined)) {

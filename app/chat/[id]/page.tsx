@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import { Chat } from "@/components/chat";
 import { slotsConfigured } from "@/src/core";
-import { compactionInFlight, getChat, isTurnRunning, readSettingsRecord, turnFailure } from "@/src/server";
+import { SubjectRedirect } from "@/components/subject-redirect";
+import { modeOfChat, subjectHref } from "@/src/core";
+import { compactionInFlight, getChat, getSubject, isTurnRunning, readSettingsRecord, turnFailure } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,13 @@ export default async function ChatPage({
 	const [{ id }, { prompt }] = await Promise.all([params, searchParams]);
 	const chat = getChat(id);
 	if (!chat) notFound();
+	// papersplainer: a conversation shown inside a paper or topic is reached
+	// through that subject. Old links (citations, the activity dock) land
+	// here and are sent on. A shelved conversation (one that lost its mode
+	// slot during conversion) has no place there and still opens on its own.
+	const subject = chat.subjectId ? getSubject(chat.subjectId) : null;
+	const mode = modeOfChat(chat);
+	if (subject && subject.chats[mode] === chat.id) return <SubjectRedirect to={subjectHref(subject.id, mode)} />;
 	// The persistent setup CTA's seed (BYOK, owner 2026-09-22): slotsConfigured
 	// over the settings record, server-read — the same gate home/new read. The
 	// server's 503 stays the truth; this only decides whether the pill rides.
