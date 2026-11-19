@@ -48,6 +48,14 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: dist/*.exe
+      - name: Report installed size
+        run: |
+          app="dist/win-unpacked"
+          echo "SIZE app total: $(du -sm "$app" | cut -f1) MB"
+          echo "SIZE installer: $(du -sm dist/*.exe | cut -f1 | paste -sd+ - | bc) MB"
+          du -sm "$app"/* | sort -rn | head -8 | sed 's/^/SIZE top: /'
+          du -sm "$app"/resources/* | sort -rn | head -8 | sed 's/^/SIZE resources: /'
+          du -sm "$app"/resources/server/standalone/node_modules/* "$app"/resources/server/standalone/node_modules/@*/* 2>/dev/null | sort -rn | head -40 | sed 's/^/SIZE module: /'
       # Checks on the packaged app. They run after the installer is saved, so
       # a failure here is reported without withholding the installer.
       - name: Initialize packaged providers offline
