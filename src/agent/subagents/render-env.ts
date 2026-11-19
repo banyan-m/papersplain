@@ -8,8 +8,13 @@ import { PATHS } from "../../../config.ts";
 /**
  * papersplainer: the managed render environments.
  *
- * Manim gets its own Python virtual environment under
- * <data>/render-env/manim, created with uv. The app sets it up on first
+ * Manim gets its own Python environment under <data>/render-env/manim.
+ * On Windows it is a virtual environment created with uv: every package
+ * Manim needs has a prebuilt Windows wheel. On macOS one does not: pycairo
+ * ships no macOS wheel, and building it needs a compiler, pkg-config and
+ * cairo, which an ordinary Mac lacks. So on macOS the base (Python plus a
+ * prebuilt pycairo and its cairo libraries) comes from conda-forge via
+ * micromamba, a single downloaded binary, and uv installs the rest on top. The app sets it up on first
  * launch (see app/api/render-env); a render that arrives before that
  * finishes waits for the same install. After installing, parts Manim's
  * Cairo renderer never uses are removed to save disk space (see trimEnv).
@@ -27,7 +32,7 @@ const PACKAGES: Record<RenderEnvKind, string[]> = {
 };
 const PYTHON_VERSION = "3.11";
 /** Bump to force a reinstall when PACKAGES changes. */
-const ENV_STAMP = "3";
+const ENV_STAMP = "4";
 
 const OVERRIDE_VAR: Record<RenderEnvKind, string> = {
 	manim: "LH_MANIM_PYTHON",
@@ -200,8 +205,10 @@ async function downloadUv(onActivity: (line: string) => void, signal?: AbortSign
 	try {
 		const archive = path.join(tmp, asset);
 		await fs.writeFile(archive, Buffer.from(await res.arrayBuffer()));
-		// bsdtar (Windows 10+) and GNU tar both unpack these with -xf.
-		const unpack = await runProcess("tar", ["-xf", archive, "-C", tmp], { signal, timeoutMs: 120_000 });
+		// Windows 10+ ships bsdtar, which unpacks .zip; name it by full path so a
+		// GNU tar earlier on PATH (Git for Windows) is never picked instead.
+		const tarBinary = process.platform === "win32" ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
+		const unpack = await runProcess(tarBinary, ["-xf", archive, "-C", tmp], { signal, timeoutMs: 120_000 });
 		if (unpack.code !== 0) throw new Error(`unpacking uv failed: ${unpack.stderr.slice(-400)}`);
 		const found = await findFile(tmp, exe("uv"));
 		if (!found) throw new Error("the uv download did not contain the uv executable");
@@ -249,26 +256,140 @@ export function ensureRenderEnv(
 	return install;
 }
 
+/** Platforms where the environment's base must come from conda-forge. */
+export function needsCondaBase(platform: NodeJS.Platform = process.platform): boolean {
+	// LH_CONDA_BASE=1 forces it elsewhere (used to exercise this path off macOS).
+	return platform === "darwin" || process.env.LH_CONDA_BASE === "1";
+}
+
+/** The micromamba release asset for this platform, or null when unsupported. */
+export function micromambaAssetName(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string | null {
+	if (platform === "darwin") return arch === "arm64" ? "micromamba-osx-arm64" : arch === "x64" ? "micromamba-osx-64" : null;
+	if (platform === "linux") return arch === "x64" ? "micromamba-linux-64" : arch === "arm64" ? "micromamba-linux-aarch64" : null;
+	return null;
+}
+
+/** conda-forge packages for the base: Python and the one library with no wheel. */
+const CONDA_BASE = [`python=${PYTHON_VERSION}`, "pycairo"];
+
+/** Create the environment's base from conda-forge with a downloaded micromamba. */
+async function createCondaBase(dir: string, onActivity: (line: string) => void, signal?: AbortSignal): Promise<void> {
+	const asset = micromambaAssetName();
+	if (!asset) throw new Error(`no micromamba build for ${process.platform}/${process.arch}`);
+	const work = path.join(PATHS.renderEnv, "mamba");
+	await fs.rm(work, { recursive: true, force: true });
+	await fs.mkdir(work, { recursive: true });
+	try {
+		onActivity("downloading micromamba");
+		const res = await fetch(`https://github.com/mamba-org/micromamba-releases/releases/latest/download/${asset}`, { signal });
+		if (!res.ok) throw new Error(`downloading micromamba failed: HTTP ${res.status}`);
+		const micromamba = path.join(work, "micromamba");
+		await fs.writeFile(micromamba, Buffer.from(await res.arrayBuffer()));
+		await fs.chmod(micromamba, 0o755);
+		onActivity("creating Python environment with prebuilt graphics libraries");
+		await fs.rm(dir, { recursive: true, force: true });
+		const create = await runProcess(
+			micromamba,
+			["create", "-y", "-q", "-p", dir, "-c", "conda-forge", "--override-channels", ...CONDA_BASE],
+			{ signal, timeoutMs: 20 * 60_000, env: { MAMBA_ROOT_PREFIX: path.join(work, "root"), CONDA_PKGS_DIRS: path.join(work, "pkgs") } },
+		);
+		if (create.code !== 0) throw new Error(`creating the Python environment failed: ${tail(create.stderr || create.stdout)}`);
+	} finally {
+		// The installer and its package cache are not needed once the environment exists.
+		await fs.rm(work, { recursive: true, force: true });
+	}
+}
+
+/** Shared libraries in a conda base that the cairo binding never needs
+ *  (Python's own, and the libraries only Python's standard modules use). */
+const NOT_CAIRO_LIBS = /^lib(python|tcl|tk|sqlite|ssl|crypto|ncurses|readline|form|menu|panel|tinfo|icu|stdc\+\+|gomp|gcc_s|quadmath|gfortran|c\+\+)/;
+
+/**
+ * Put a prebuilt pycairo into a uv virtual environment: copy the binding
+ * (and its package metadata, so pip sees it as installed) from a throwaway
+ * conda base, with the shared libraries it loads. The binding finds those
+ * through a path relative to itself that resolves to <env>/lib in both
+ * layouts, so no file needs rewriting.
+ */
+async function transplantCairo(base: string, dir: string): Promise<void> {
+	const from = await findSitePackages(base);
+	const to = await findSitePackages(dir);
+	if (!from || !to) throw new Error("could not locate site-packages for the cairo binding");
+	let copied = false;
+	for (const entry of await fs.readdir(from)) {
+		if (entry === "cairo" || /^pycairo-.*\.(dist|egg)-info$/.test(entry)) {
+			await fs.cp(path.join(from, entry), path.join(to, entry), { recursive: true, verbatimSymlinks: true });
+			copied ||= entry === "cairo";
+		}
+	}
+	if (!copied) throw new Error("the conda base has no cairo binding");
+	for (const entry of await fs.readdir(path.join(base, "lib"), { withFileTypes: true })) {
+		const shared = /\.dylib$/.test(entry.name) || /\.so(\.\d+)*$/.test(entry.name);
+		if (!shared || entry.isDirectory() || NOT_CAIRO_LIBS.test(entry.name)) continue;
+		await fs.cp(path.join(base, "lib", entry.name), path.join(dir, "lib", entry.name), { verbatimSymlinks: true, force: true });
+	}
+}
+
+const IMPORT_CHECK = ["-I", "-c", "import manim, h5py, cairo, manimpango"];
+
 async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => void, signal?: AbortSignal): Promise<string> {
 	const existingUv = findUv();
 	const uv = existingUv ?? (await downloadUv(onActivity, signal));
 	const dir = envDir(kind);
 	await fs.mkdir(PATHS.renderEnv, { recursive: true });
 	await fs.rm(readyFile(kind), { force: true });
-	onActivity(`creating ${kind} Python environment`);
-	const venv = await runProcess(uv, ["venv", "--python", PYTHON_VERSION, "--allow-existing", dir], { signal, timeoutMs: 10 * 60_000 });
-	if (venv.code !== 0) throw new Error(`creating the ${kind} environment failed: ${tail(venv.stderr)}`);
-	onActivity(`installing ${PACKAGES[kind].join(", ")} (first run, this can take several minutes)`);
-	const pip = await runProcess(uv, ["pip", "install", "--python", venvPython(kind), ...PACKAGES[kind]], { signal, timeoutMs: 30 * 60_000 });
-	if (pip.code !== 0) throw new Error(`installing ${PACKAGES[kind].join(", ")} failed: ${tail(pip.stderr)}`);
-	onActivity("removing unused parts");
-	await trimEnv(dir);
-	const check = await runProcess(venvPython(kind), ["-c", "import manim, h5py"], { signal, timeoutMs: 5 * 60_000 });
-	if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
-	await fs.writeFile(readyFile(kind), ENV_STAMP);
-	// The installer is only needed again for a reinstall, and is quick to fetch.
-	if (!existingUv) await fs.rm(path.dirname(localUv()), { recursive: true, force: true });
-	return venvPython(kind);
+	// Keep uv's Python download inside the app's folder, and its package cache
+	// temporary, so removing the app's data removes everything this installed.
+	const cache = path.join(PATHS.renderEnv, "uv-cache");
+	const uvEnv = { UV_PYTHON_INSTALL_DIR: path.join(PATHS.renderEnv, "python"), UV_CACHE_DIR: cache, UV_LINK_MODE: "copy" };
+	const python = venvPython(kind);
+	const pipInstall = async (): Promise<void> => {
+		onActivity(`installing ${PACKAGES[kind].join(", ")} (first run, this can take several minutes)`);
+		const pip = await runProcess(uv, ["pip", "install", "--python", python, ...PACKAGES[kind]], { signal, timeoutMs: 30 * 60_000, env: uvEnv });
+		if (pip.code !== 0) throw new Error(`installing ${PACKAGES[kind].join(", ")} failed: ${tail(pip.stderr)}`);
+	};
+	const imports = () => runProcess(python, IMPORT_CHECK, { signal, timeoutMs: 5 * 60_000, scrubEnv: true });
+	try {
+		onActivity(`creating ${kind} Python environment`);
+		await fs.rm(dir, { recursive: true, force: true });
+		const venv = await runProcess(uv, ["venv", "--python", PYTHON_VERSION, dir], { signal, timeoutMs: 10 * 60_000, env: uvEnv });
+		if (venv.code !== 0) throw new Error(`creating the ${kind} environment failed: ${tail(venv.stderr)}`);
+		let conda: "none" | "cairo-only" | "full" = "none";
+		if (needsCondaBase()) {
+			// Light route: a small uv environment plus only the prebuilt cairo binding.
+			const base = path.join(PATHS.renderEnv, "conda-base");
+			try {
+				await createCondaBase(base, onActivity, signal);
+				await transplantCairo(base, dir);
+				conda = "cairo-only";
+			} finally {
+				await fs.rm(base, { recursive: true, force: true });
+			}
+		}
+		await pipInstall();
+		let check = await imports();
+		if (check.code !== 0 && conda === "cairo-only") {
+			// Heavier but self-consistent route: the whole base from conda-forge.
+			onActivity("retrying with a full prebuilt base");
+			await createCondaBase(dir, onActivity, signal);
+			await pipInstall();
+			check = await imports();
+			conda = "full";
+		}
+		if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
+		onActivity("removing unused parts");
+		await trimEnv(dir);
+		const after = await imports();
+		if (after.code !== 0) throw new Error(`the ${kind} environment does not import after trimming: ${tail(after.stderr)}`);
+		await fs.writeFile(readyFile(kind), ENV_STAMP);
+		onActivity(`environment ready (${conda === "none" ? "wheels only" : conda === "cairo-only" ? "prebuilt cairo binding added" : "full prebuilt base"})`);
+		return python;
+	} finally {
+		await fs.rm(path.join(PATHS.renderEnv, "conda-base"), { recursive: true, force: true });
+		await fs.rm(cache, { recursive: true, force: true });
+		// The installer is only needed again for a reinstall, and is quick to fetch.
+		if (!existingUv) await fs.rm(path.dirname(localUv()), { recursive: true, force: true });
+	}
 }
 
 /** Packages Manim installs but its Cairo renderer never loads (OpenGL maths). */
@@ -277,6 +398,15 @@ const UNUSED_PACKAGES = ["pyglm", "glm"];
 /** Remove what a render never needs: the libraries' own test suites and the
  *  OpenGL-only packages. Measured on Linux: about 394 MB down to about 325 MB. */
 export async function trimEnv(envDir: string): Promise<void> {
+	// A conda base also carries development files a render never needs.
+	for (const extra of ["include", path.join("share", "doc"), path.join("share", "man"), path.join("share", "gtk-doc"), path.join("share", "info"), "man"]) {
+		await fs.rm(path.join(envDir, extra), { recursive: true, force: true });
+	}
+	try {
+		for (const entry of await fs.readdir(path.join(envDir, "lib"))) {
+			if (entry.endsWith(".a")) await fs.rm(path.join(envDir, "lib", entry), { force: true });
+		}
+	} catch { /* no lib folder (Windows) */ }
 	const sitePackages = await findSitePackages(envDir);
 	if (!sitePackages) return;
 	for (const name of UNUSED_PACKAGES) await fs.rm(path.join(sitePackages, name), { recursive: true, force: true });

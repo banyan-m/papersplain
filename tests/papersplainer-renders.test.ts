@@ -20,7 +20,7 @@ import type { PiEngine } from "../src/agent/models.ts";
 import { createManimRenderer, runManimMaker, sceneProblem, type ManimRender, type ManimRenderer } from "../src/agent/subagents/manim-maker.ts";
 import { createMoleculeTool, moleculeInputProblem } from "../src/agent/tools/molecule.ts";
 import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
-import { chatRendersDir, runProcess, scrubbedEnv, trimEnv, uvAssetName } from "../src/agent/subagents/render-env.ts";
+import { chatRendersDir, micromambaAssetName, needsCondaBase, runProcess, scrubbedEnv, trimEnv, uvAssetName } from "../src/agent/subagents/render-env.ts";
 import { summarizeCif, summarizePdb } from "../src/core/structure-summary.ts";
 import { moleculeViewSpec } from "../components/artifacts/molecule-style.ts";
 import type { MoleculeDetails } from "../src/core/contracts.ts";
@@ -102,6 +102,14 @@ describe("papersplainer contracts", () => {
 		assert.equal(uvAssetName("darwin", "arm64"), "uv-aarch64-apple-darwin.tar.gz");
 		assert.equal(uvAssetName("linux", "x64"), "uv-x86_64-unknown-linux-gnu.tar.gz");
 		assert.equal(uvAssetName("linux", "ia32"), null);
+	});
+
+	it("macOS gets its cairo binding prebuilt; Windows installs from wheels alone", () => {
+		assert.equal(needsCondaBase("darwin"), true);
+		assert.equal(needsCondaBase("win32"), process.env.LH_CONDA_BASE === "1");
+		assert.equal(micromambaAssetName("darwin", "arm64"), "micromamba-osx-arm64");
+		assert.equal(micromambaAssetName("darwin", "x64"), "micromamba-osx-64");
+		assert.equal(micromambaAssetName("win32", "x64"), null);
 	});
 });
 
