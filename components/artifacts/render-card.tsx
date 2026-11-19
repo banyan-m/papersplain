@@ -30,7 +30,7 @@ export function renderFileUrl(chatId: string | undefined, file: unknown): string
 function FailedCard({ label, testId, notes, fallback }: { label: string; testId: string; notes?: string; fallback: string }) {
 	return (
 		<div className="rounded-xl border bg-card p-4 text-card-foreground" data-testid={testId}>
-			<div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+			<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 				{label}
 				<span className="rounded bg-error/15 px-1.5 py-0.5 text-error">failed</span>
 			</div>
@@ -43,7 +43,7 @@ function Caption({ label, title, href, download }: { label: string; title: strin
 	return (
 		<figcaption className="mt-2 flex items-start justify-between gap-2">
 			<div className="flex min-w-0 items-baseline gap-2">
-				<span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+				<span className="shrink-0 text-xs font-medium text-muted-foreground">{label}</span>
 				<span className="text-sm text-muted-foreground">{title}</span>
 			</div>
 			<a

@@ -26,11 +26,11 @@ describe("fontMenuResults — the DEFAULT row is a candidate, never a ghost pick
 		assert.deepEqual(fontMenuResults("", families), [null, "Arial", "CMU Serif", "Georgia", "Helvetica Neue", "Menlo"]);
 	});
 
-	it("the default row matches its own identity (source/sans/default), not everything", () => {
+	it("the default row matches its own identity (geist/default), not everything", () => {
 		assert.deepEqual(fontMenuResults("georgia", families), ["Georgia"]);
 		assert.deepEqual(fontMenuResults("menlo", families), ["Menlo"]);
 		// the default row is reachable by search…
-		assert.deepEqual(fontMenuResults("source", families)[0], null);
+		assert.deepEqual(fontMenuResults("geist", families)[0], null);
 		assert.ok(fontMenuResults("default", families).includes(null));
 		// …and drops out of unrelated queries
 		assert.ok(!fontMenuResults("georgia", families).includes(null));
@@ -61,7 +61,7 @@ describe("the curated dev-browser fallback", () => {
 	it("is the app's knowns + ubiquitous macOS families — and never a fabricated system list member for the factory family", () => {
 		assert.ok(CURATED_FALLBACK_FONTS.includes("CMU Serif"));
 		assert.ok(CURATED_FALLBACK_FONTS.includes("Georgia"));
-		assert.ok(CURATED_FALLBACK_FONTS.includes("JetBrains Mono"), "the bundled mono is always offered");
+		assert.ok(CURATED_FALLBACK_FONTS.includes("Geist Mono"), "the bundled mono is always offered");
 		// the factory family lives ONLY as the DEFAULT row — never a
 		// duplicated family row
 		assert.ok(!CURATED_FALLBACK_FONTS.includes(DEFAULT_READING_FONT));
@@ -121,7 +121,7 @@ describe("the appearance section's font control (thin SSR)", () => {
 		assert.ok(html.includes('aria-expanded="false"'), "the collapsed state");
 		// the old CommitInput is retired
 		assert.ok(!html.includes('data-testid="input-font"'));
-		assert.ok(!html.includes('placeholder="Source Sans 3"'));
+		assert.ok(!html.includes('placeholder="Geist"'));
 	});
 
 	it("a stored family shows in the trigger (the record never lies)", () => {
@@ -173,7 +173,7 @@ describe("customFamilyFor — the single-field custom escape (2026-09-26)", () =
 	it("a matching family is the better pick — no action row", () => {
 		assert.equal(customFamilyFor("georgia", families), null);
 		// the default row matches too — "source"/"sans"/"default" queries pick it
-		assert.equal(customFamilyFor("source", families), null);
+		assert.equal(customFamilyFor("geist", families), null);
 	});
 
 	it("an empty query is never a custom pick", () => {

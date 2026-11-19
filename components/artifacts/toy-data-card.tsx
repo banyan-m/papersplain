@@ -26,7 +26,7 @@ export function ToyDataOutputCard({ output }: { output: unknown }) {
 	if (result.files.length === 0) {
 		return (
 			<div className="rounded-xl border bg-card p-4 text-card-foreground" data-testid="toy-data-card-failed">
-				<div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+				<div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 					Toy data
 					<span className="rounded bg-error/15 px-1.5 py-0.5 text-error">failed</span>
 				</div>
@@ -37,7 +37,7 @@ export function ToyDataOutputCard({ output }: { output: unknown }) {
 	return (
 		<div className="my-4 rounded-xl border bg-card p-4 text-card-foreground" data-testid="toy-data-card">
 			<div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-				<span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Toy data</span>
+				<span className="text-xs font-medium text-muted-foreground">Toy data</span>
 				<span className="text-sm">{result.title}</span>
 				{result.reused && <span className="text-xs text-muted-foreground">· reused from an earlier session on this paper</span>}
 			</div>
@@ -52,7 +52,7 @@ export function ToyDataOutputCard({ output }: { output: unknown }) {
 							<details className="group rounded-lg border bg-background">
 								<summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm">
 									<span className="font-mono">{file.name}</span>
-									<span className="rounded bg-accent px-1.5 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">{file.format}</span>
+									<span className="rounded bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground">{file.format}</span>
 									<span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
 										{file.summary}{file.checked ? "" : " · not format-checked"}
 									</span>

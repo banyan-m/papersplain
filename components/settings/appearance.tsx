@@ -66,7 +66,7 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
  *  without being installed: an installed copy wins by name, the bundled
  *  one fills in otherwise. Exported for the font menu and tests. */
 export const BUNDLED_READING_FONTS: Readonly<Record<string, string>> = {
-	"JetBrains Mono": "var(--font-jetbrains)",
+	"Geist Mono": "var(--font-geist-mono)",
 };
 
 /** THE mapping: resolved appearance + active theme → the CSS variables to
@@ -80,7 +80,7 @@ export function appearanceVars(
 	const vars: Record<string, string> = themeVars(effectiveColors(theme, a), theme.mode);
 	if (a.fontFamily !== null) {
 		const bundled = BUNDLED_READING_FONTS[a.fontFamily];
-		vars["--font-prose"] = `"${a.fontFamily}", ${bundled ? `${bundled}, ` : ""}var(--font-sans3), ui-sans-serif, system-ui, sans-serif`;
+		vars["--font-prose"] = `"${a.fontFamily}", ${bundled ? `${bundled}, ` : ""}var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif`;
 	}
 	// The ONE documented reading-size variable (typography round 4): prose,
 	// inputs, and session titles all read it, so one setProperty moves them.
@@ -88,10 +88,11 @@ export function appearanceVars(
 	// Code surfaces opt in to this token; never change prose or UI shaping.
 	// "normal" permits the font's behavior rather than forcing glyph joining.
 	vars["--lh-code-ligatures"] = a.codeLigatures ? "normal" : "none";
-	// Session names: CMU Serif by default; the toggle swaps the title font
-	// to the prose family — covers chat.tsx + new-session.tsx titles with
-	// zero component edits (they use the .font-title utility).
-	if (!a.sessionNameSerif) vars["--font-title"] = "var(--font-prose)";
+	// Session names: the prose family by default (papersplainer, owner
+	// 2026-11-19); the toggle swaps the title font to CMU Serif — covers
+	// chat.tsx + new-session.tsx titles with zero component edits (they use
+	// the .font-title utility).
+	if (a.sessionNameSerif) vars["--font-title"] = '"lh-cmu", serif';
 	// Markdown heading weight (the emphasis inks ride the theme colors).
 	vars["--lh-heading-weight"] = String(a.mdRendering.headingWeight);
 	return vars;

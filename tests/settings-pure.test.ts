@@ -36,8 +36,8 @@ describe("resolveAppearance — delta over factory", () => {
 		assert.deepEqual(a.colors, {});
 		assert.equal(a.fontFamily, null);
 		assert.equal(a.proseFontSize, 16);
-		assert.equal(a.sessionNameSerif, true);
-		assert.deepEqual(a.mdRendering, { headingWeight: 900, boldColor: null, italicColor: null });
+		assert.equal(a.sessionNameSerif, false);
+		assert.deepEqual(a.mdRendering, { headingWeight: 600, boldColor: null, italicColor: null });
 	});
 
 	it("explicit deltas win field-by-field", () => {
@@ -56,16 +56,16 @@ describe("appearanceVars — the mapping the provider applies", () => {
 		assert.equal(vars["--accent"], "#2a2a2a", "the hover surface keeps its hand-picked value");
 		assert.equal(vars["--lh-ink-strong"], "#e6e6e6", "emphasis = text on Default");
 		assert.equal(vars["--lh-prose-size"], "16px");
-		assert.equal(vars["--lh-heading-weight"], "900");
+		assert.equal(vars["--lh-heading-weight"], "600");
 		assert.equal(vars["--font-prose"], undefined, "no font override at factory");
-		assert.equal(vars["--font-title"], undefined, "CMU stays");
+		assert.equal(vars["--font-title"], undefined, "titles follow the prose font via the stylesheet");
 	});
 
-	it("JetBrains Mono renders from the bundled face when it is not installed", () => {
-		const vars = appearanceVars(resolveAppearance({ fontFamily: "JetBrains Mono" }), mocha);
+	it("Geist Mono renders from the bundled face when it is not installed", () => {
+		const vars = appearanceVars(resolveAppearance({ fontFamily: "Geist Mono" }), mocha);
 		assert.equal(
 			vars["--font-prose"],
-			`"JetBrains Mono", var(--font-jetbrains), var(--font-sans3), ui-sans-serif, system-ui, sans-serif`,
+			`"Geist Mono", var(--font-geist-mono), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif`,
 		);
 	});
 
@@ -76,7 +76,7 @@ describe("appearanceVars — the mapping the provider applies", () => {
 				colors: { warning: "#fab387" },
 				fontFamily: "Georgia",
 				proseFontSize: 18,
-				sessionNameSerif: false,
+				sessionNameSerif: true,
 				mdRendering: { headingWeight: 700, boldColor: "#ff0000", italicColor: "#00ff00" },
 			}),
 			mocha,
@@ -84,18 +84,18 @@ describe("appearanceVars — the mapping the provider applies", () => {
 		assert.equal(vars["--background"], "#101820");
 		assert.equal(vars["--card"], mocha.colors.surface, "un-overridden colors stay the theme's");
 		assert.equal(vars["--lh-warning"], "#fab387");
-		assert.equal(vars["--font-prose"], `"Georgia", var(--font-sans3), ui-sans-serif, system-ui, sans-serif`);
+		assert.equal(vars["--font-prose"], `"Georgia", var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif`);
 		assert.equal(vars["--lh-prose-size"], "18px");
-		assert.equal(vars["--font-title"], "var(--font-prose)", "serif off → titles follow the prose font");
+		assert.equal(vars["--font-title"], '"lh-cmu", serif', "serif on → titles use CMU Serif");
 		assert.equal(vars["--lh-heading-weight"], "700");
 		assert.equal(vars["--lh-ink-strong"], "#ff0000");
 		assert.equal(vars["--lh-ink-italic"], "#00ff00");
 	});
 
-	it("sessionNameSerif false alone: only the title token changes", () => {
+	it("sessionNameSerif true alone: only the title token changes", () => {
 		const factory = appearanceVars(resolveAppearance(undefined), DEFAULT_THEME);
-		assert.deepEqual(appearanceVars(resolveAppearance({ sessionNameSerif: false }), DEFAULT_THEME), {
-			...factory, "--font-title": "var(--font-prose)",
+		assert.deepEqual(appearanceVars(resolveAppearance({ sessionNameSerif: true }), DEFAULT_THEME), {
+			...factory, "--font-title": '"lh-cmu", serif',
 		});
 	});
 });
@@ -106,7 +106,7 @@ describe("staleVarNames — the removal half of application (owner repro: resets
 			resolveAppearance({
 				background: "#101820",
 				fontFamily: "Georgia",
-				sessionNameSerif: false,
+				sessionNameSerif: true,
 				mdRendering: { headingWeight: 700, boldColor: "#ff0000", italicColor: "#00ff00" },
 			}),
 			DEFAULT_THEME,
@@ -114,7 +114,7 @@ describe("staleVarNames — the removal half of application (owner repro: resets
 		const factory = appearanceVars(resolveAppearance(undefined), DEFAULT_THEME);
 		const stale = staleVarNames(Object.keys(fullDelta), factory);
 		assert.ok(stale.includes("--font-prose"));
-		assert.ok(stale.includes("--font-title"), "serif toggle back ON must clear the title override");
+		assert.ok(stale.includes("--font-title"), "serif toggle back OFF must clear the title override");
 		assert.ok(!stale.includes("--background"), "a theme always sets every color");
 		assert.equal(factory["--background"], "#141414", "an emptied background is the theme's again");
 		assert.ok(!stale.includes("--lh-prose-size"), "always-applied tokens never go stale");

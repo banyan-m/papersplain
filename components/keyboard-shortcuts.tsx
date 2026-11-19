@@ -195,7 +195,7 @@ function CheatSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 					if (actions.length === 0) return null;
 					return (
 						<div key={scope} className="mb-4">
-							<div className="mb-1.5 text-xs uppercase tracking-widest text-muted-foreground/70">
+							<div className="mb-1.5 text-xs text-muted-foreground/70">
 								{scopeLabels[scope]}
 							</div>
 							<div className="flex flex-col gap-1">
@@ -212,7 +212,7 @@ function CheatSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
 					);
 				})}
 				{[...new Set(pluginRows.map(row => row.pluginId))].map(pluginId => <div key={pluginId} className="mb-4" data-testid={`kbd-cheat-plugin-${pluginId}`}>
-					<div className="mb-1.5 text-xs uppercase tracking-widest text-muted-foreground/70">{pluginRows.find(row => row.pluginId === pluginId)!.pluginName}</div>
+					<div className="mb-1.5 text-xs text-muted-foreground/70">{pluginRows.find(row => row.pluginId === pluginId)!.pluginName}</div>
 					{pluginRows.filter(row => row.pluginId === pluginId).map(row => <div key={row.id} className="mb-1 text-sm">
 						<div className="flex items-center justify-between gap-4"><span className="text-muted-foreground">{row.name}</span><kbd className="rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-xs text-card-foreground">{row.binding ? formatBinding(row.binding) : "Unbound"}</kbd></div>
 						<div className="text-xs text-muted-foreground/70">{pluginShortcutScopeLabel(row)}{row.reason ? ` · Inactive: ${row.reason}` : ""}</div>

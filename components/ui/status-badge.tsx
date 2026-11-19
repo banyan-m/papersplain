@@ -6,7 +6,7 @@ export function StatusBadge({ text, color }: { text: string; color?: string }) {
 		<span
 			data-slot="status-badge"
 			className={cn(
-				"rounded px-1.5 py-0.5 font-ui text-xs font-medium uppercase tracking-wide",
+				"rounded px-1.5 py-0.5 font-ui text-xs font-medium",
 				color === undefined && "bg-muted text-muted-foreground",
 			)}
 			style={color === undefined ? undefined : {

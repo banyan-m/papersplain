@@ -240,7 +240,7 @@ export function DraftShell({
 												aria-pressed={paperMode === m}
 												onClick={() => onPaperMode?.(m)}
 												className={
-													"rounded-sm px-2 py-0.5 text-[11px] uppercase tracking-wider transition-colors " +
+													"rounded-sm px-2 py-0.5 text-[11px] transition-colors" +
 													(paperMode === m ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")
 												}
 											>

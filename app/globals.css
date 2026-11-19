@@ -28,7 +28,7 @@
 }
 
 /* Palette (owner's hexes): main #141414, raised #1C1C1C, edges #434343.
-   Mono chrome = JetBrains Mono; prose = Source Sans 3; titles = CMU Serif.
+   Chrome, prose and titles = Geist; code = Geist Mono; CMU Serif titles optional.
    Dark is the default variant (:root) and the `.dark` class on <html>.
    THEMES (theme wave, 2026-11-04): the active theme's colors land as
    inline variables on <html> (app/layout.tsx first paint, then the
@@ -79,7 +79,7 @@
 	--lh-prose-size: 16px;
 	--lh-prose-leading: 1.5;
 	/* Markdown heading weight (appearance settings; 900 = the Black cut). */
-	--lh-heading-weight: 900;
+	--lh-heading-weight: 600;
 }
 
 /* The light variant: the colors come from the active light theme (inline
@@ -100,12 +100,13 @@
 }
 
 @theme inline {
-	/* Chrome/code = JetBrains Mono; sans surfaces follow the reading font
-	   (Source Sans 3 by default). The loading-face variables attach in
-	   app/layout.tsx. Keep the sans alias pointed at the RUNTIME prose token,
-	   not the loading face, so font-sans also honors Appearance changes. */
-	--font-ui: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
-	--font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, monospace;
+	/* papersplainer (owner, 2026-11-19): chrome = Geist, code = Geist Mono;
+	   sans surfaces follow the reading font (Geist by default). The
+	   loading-face variables attach in app/layout.tsx. Keep the sans alias
+	   pointed at the RUNTIME prose token, not the loading face, so font-sans
+	   also honors Appearance changes. */
+	--font-ui: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 	--font-sans: var(--font-prose);
 	/* The modular type ladder — each size carries its own line-height.
 	   Component sizes must pull from this ladder. (owner, typography
@@ -187,7 +188,7 @@ body {
    font takes it, and CMU (a single 700 face) snaps to its nearest
    available weight — the same rendering it already had. */
 .font-title {
-	font-weight: 900;
+	font-weight: 600;
 }
 
 .lh-prose :where(strong, b) {
@@ -216,7 +217,7 @@ body {
    :where keeps specificity zero. Chrome titles (CMU Serif) don't live
    under .lh-prose and stay untouched. */
 .lh-prose :where(h1, h2, h3, h4, h5, h6) {
-	font-weight: var(--lh-heading-weight, 900);
+	font-weight: var(--lh-heading-weight, 600);
 }
 
 /* lh-input (owner, typography round 2): lh-prose's 1.5 READING leading
@@ -595,8 +596,8 @@ body {
    independently, whether titles use serif or the reading family. Non-inline
    utilities read these vars; Source Sans 3 remains the default/loading face. */
 @theme {
-	--font-prose: var(--font-sans3), ui-sans-serif, system-ui, sans-serif;
-	--font-title: "lh-cmu", serif;
+	--font-prose: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+	--font-title: var(--font-prose);
 }
 
 /* Card enter (owner round, 2026-10-05): the transcript cards' one-shot

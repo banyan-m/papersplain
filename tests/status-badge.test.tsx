@@ -13,7 +13,7 @@ import { buildAnswer, type QuestionData } from "../src/core/question-core.ts";
 import type { ArtifactPartProps } from "../src/core";
 
 const badgeSelector = '[data-slot="status-badge"]';
-const baseClasses = ["rounded", "px-1.5", "py-0.5", "font-ui", "text-xs", "font-medium", "uppercase", "tracking-wide"];
+const baseClasses = ["rounded", "px-1.5", "py-0.5", "font-ui", "text-xs", "font-medium"];
 
 function badgeFrom(html: string) {
 	const { document } = parseHTML(html);

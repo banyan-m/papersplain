@@ -50,7 +50,7 @@ import { CommitInput, SettingsMenuTrigger, SettingsRow, Toggle } from "./control
 
 /** The factory reading family — the DEFAULT row's identity (unset =
  *  this). Exported for tests. */
-export const DEFAULT_READING_FONT = "Source Sans 3";
+export const DEFAULT_READING_FONT = "Geist";
 
 /** The dev-browser fallback list (queryLocalFonts is absent there):
  *  the app's own knowns plus a handful of ubiquitous macOS families,
@@ -64,7 +64,7 @@ export const CURATED_FALLBACK_FONTS: readonly string[] = [
 	"Georgia",
 	"Helvetica",
 	"Helvetica Neue",
-	"JetBrains Mono",
+	"Geist Mono",
 	"Menlo",
 	"Times New Roman",
 	"Trebuchet MS",
@@ -297,7 +297,7 @@ export function AppearanceSection({
 			/>
 			<div data-testid="group-colors" className="mt-5 flex flex-col gap-2">
 				<div className="flex items-end justify-between gap-4">
-					<p className="text-xs uppercase tracking-widest text-muted-foreground">
+					<p className="text-xs text-muted-foreground">
 						Colors{" "}
 						<span className="normal-case tracking-normal text-muted-foreground/70">
 							· overrides on top of the theme, kept when you switch
@@ -325,7 +325,7 @@ export function AppearanceSection({
 					))}
 				</div>
 			</div>
-			<p className="mt-5 mb-2 text-xs uppercase tracking-widest text-muted-foreground">Typography</p>
+			<p className="mt-5 mb-2 text-xs text-muted-foreground">Typography</p>
 			<SettingsRow
 				label="Reading font"
 				hint={`Empty = ${DEFAULT_READING_FONT}`}

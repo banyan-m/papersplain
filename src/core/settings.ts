@@ -387,7 +387,7 @@ export interface AgentSettings {
 
 /** Markdown-rendering knobs — the bare-bones set (owner decision). */
 export interface MdRenderingSettings {
-	/** Heading font weight (100–900, default 900). CSS resolves the nearest
+	/** Heading font weight (100–900, default 600). CSS resolves the nearest
 	 *  available weight of the chosen font — no font introspection needed. */
 	headingWeight?: number;
 	/** Color for **bold** spans (default #ffffff). */
@@ -409,15 +409,15 @@ export interface AppearanceSettings {
 	/** Per-color overrides on top of the theme (null/absent = the theme's).
 	 *  Preserved across theme switches. Bold/italic live in mdRendering. */
 	colors?: AppearanceColorOverrides;
-	/** The main reading font (everything that is Source Sans 3 today), by
-	 *  name — user-chosen from installed fonts. null = Source Sans 3. */
+	/** The main reading font (everything that is Geist today), by
+	 *  name — user-chosen from installed fonts. null = Geist. */
 	fontFamily?: string | null;
 	/** Reading font size in px (12–24, default 16). Headings render as
 	 *  multiples of this, so one knob scales the document coherently. */
 	proseFontSize?: number;
 	/** Permit normal font ligatures in code (including inline code and code editors). Default false; prose is unaffected. */
 	codeLigatures?: boolean;
-	/** Session names in CMU Serif (default true — today's look). */
+	/** Session names in CMU Serif (default false — titles follow the reading font). */
 	sessionNameSerif?: boolean;
 	mdRendering?: MdRenderingSettings;
 }
@@ -544,11 +544,11 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		theme: "default",
 		background: null, // null = the active theme's background
 		colors: {}, // no overrides: every color is the theme's
-		fontFamily: null, // Source Sans 3
+		fontFamily: null, // Geist
 		proseFontSize: 16,
 		codeLigatures: false,
-		sessionNameSerif: true,
-		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
+		sessionNameSerif: false,
+		mdRendering: { headingWeight: 600, boldColor: null, italicColor: null },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
 	compaction: { thresholdTokens: 150_000, includeReasoning: false },
