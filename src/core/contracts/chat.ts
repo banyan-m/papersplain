@@ -38,6 +38,9 @@ export interface ChatRecord {
 	kind?: ChatKind;
 	/** Paper sessions only; absent reads as walkthrough. */
 	paperMode?: PaperMode;
+	/** papersplainer: the paper or topic this conversation belongs to
+	 *  (contracts/subject.ts). Absent on a session not yet filed. */
+	subjectId?: string;
 	/** The session's plan tree, written by the native plan tools. */
 	tree?: PlanTree;
 	/** Append-only usage log, separate from message history: one entry per billed
@@ -307,6 +310,10 @@ export interface ChatSummary {
 	updatedAt: string;
 	/** Normalized kind (absent record field reads as teach). */
 	kind: ChatKind;
+	/** Paper sessions only. */
+	paperMode?: PaperMode;
+	/** The owning paper or topic, when filed. */
+	subjectId?: string;
 	messageCount: number;
 	/** Transcript-derived phase: probe ends at successful probe_done completion;
 	 * plan ends at the first node-tagged teaching question call, not its answer. */

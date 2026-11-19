@@ -3,6 +3,9 @@ import { isJobLive } from "../agent/subagents/aborts.ts";
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
+import type { ChatRecord, PaperMode } from "../core/contracts.ts";
+import { chainsForSelection, formatChainLine } from "../core/chains.ts";
+import { newGraphContextMessage, type GraphContextPick } from "../core/native-messages.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -27,6 +30,58 @@ import { forgetChatPaper } from "../agent/subagents/paper-cache-store.ts";
 
 export const { createChat, getChat, listChats } = stores.chatStore;
 export { titleFromPrompt };
+
+/** Validate the picks a creation request carries (at most 64). */
+export function graphPicksOf(raw: unknown): GraphContextPick[] {
+	return Array.isArray(raw)
+		? raw
+				.filter(
+					(p): p is GraphContextPick =>
+						typeof p === "object" &&
+						p !== null &&
+						typeof (p as GraphContextPick).id === "string" &&
+						typeof (p as GraphContextPick).name === "string" &&
+						typeof (p as GraphContextPick).statement === "string",
+				)
+				.slice(0, 64)
+		: [];
+}
+
+/** THE ONE SESSION BIRTH (both front doors: POST /api/chats and a subject's
+ *  mode conversation). Creates the record, stamps the session's model, and
+ *  writes the map context.
+ *
+ *  PER-SESSION MODELS (owner, 2026-09-28): a session owns its model +
+ *  thinking level from birth — stamped verbatim from the STRONG slot, the
+ *  new-session default. No strong slot configured (fresh BYOK boot) → no
+ *  stamp; the turn gate's 503 models_not_configured envelope refuses
+ *  honestly until the setup flow fills the slot.
+ *
+ *  The session's map context (owner, 2026-10-04): the picked propositions
+ *  ride the CREATION — message[0] is a graph-context marker (a separate
+ *  custom message BEFORE the learner's first user message), carrying the
+ *  picks plus the reasoning chains among them. The picks carry their own
+ *  name/statement; the chains derive from the CURRENT graph snapshot. */
+export function createSession(input: { title: string; kind?: "practice" | "paper"; paperMode?: PaperMode; picks?: readonly GraphContextPick[]; subjectId?: string }): ChatRecord {
+	const chat = stores.chatStore.createChat(titleFromPrompt(input.title || "Untitled session"), input.kind, input.paperMode === "chat" ? "chat" : "walkthrough", input.subjectId);
+	const strong = stores.settingsStore.readSettings()?.models?.strong;
+	if (strong?.model) {
+		stores.chatStore.saveSettings(chat.id, {
+			model: { provider: strong.model.provider, id: strong.model.id },
+			thinkingLevel: strong.thinkingLevel,
+		});
+	}
+	const picks = input.picks ?? [];
+	if (picks.length > 0) {
+		const byId = new Map(stores.graphStore.readNodes().map((n) => [n.id, n]));
+		const pickedNodes = picks.map((p) => byId.get(p.id)).filter((n) => n !== undefined);
+		const chainLines = chainsForSelection(pickedNodes, stores.graphStore.readChains()).map((c) =>
+			formatChainLine(c, Object.fromEntries(byId)),
+		);
+		stores.chatStore.saveMessages(chat.id, [newGraphContextMessage(picks, chainLines)]);
+	}
+	return chat;
+}
 export type { ChatDeleteMode, ChatDeletionStats } from "../core/graph-deletion.ts";
 
 /** How long the wind-down wait may take before the caller gets a retryable

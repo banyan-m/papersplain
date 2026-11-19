@@ -13,6 +13,7 @@ import type { LhMessage } from "./native-messages.ts";
 import type { PaperMode } from "./contracts/chat.ts";
 import type { PluginAgentRecord } from "./plugin-agents.ts";
 import type { PluginTaskRecord } from "./plugin-workers.ts";
+import type { SubjectKind, SubjectMode, SubjectRecord } from "./contracts/subject.ts";
 import type {
 	ChatRecord,
 	ImageSnapshot,
@@ -51,13 +52,39 @@ export interface PluginTaskRecordStore {
 	save(record: PluginTaskRecord): void;
 }
 
+// ─── SubjectStore — papers and topics (data/subjects) ───────────────────────
+
+export interface SubjectStore {
+	createSubject(input: { kind: SubjectKind; title: string; source?: string; paperKey?: string }): SubjectRecord;
+	/** The record, or null if unknown id / corrupt file / newer schema. */
+	getSubject(id: string): SubjectRecord | null;
+	/** Every subject, in no particular order (the server sorts by activity). */
+	listSubjects(): SubjectRecord[];
+	renameSubject(id: string, title: string): SubjectRecord | null;
+	/** Make chatId the conversation shown for a mode. A conversation it
+	 *  replaces moves to shelved; nothing is deleted. */
+	setChat(id: string, mode: SubjectMode, chatId: string): SubjectRecord | null;
+	/** Keep a conversation with the subject without showing it. */
+	shelveChat(id: string, chatId: string): SubjectRecord | null;
+	/** Record what is learned about a paper after creation. */
+	setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string }): SubjectRecord | null;
+	/** Remove one conversation's id from the subject. */
+	forgetChat(id: string, chatId: string): SubjectRecord | null;
+	/** Delete the subject record only; its conversations are the caller's
+	 *  choreography (server/subjects.ts). False when the id is unknown. */
+	deleteSubject(id: string): boolean;
+}
+
 // ─── ChatStore — the session record's home (data/chats) ─────────────────────
 
 export interface ChatStore {
 	/** Create a session record (persisted immediately). */
 	/** Create a session record; kind "practice" marks a practice session
 	 *  (absent = teach, the default). */
-	createChat(title: string, kind?: "practice" | "paper", paperMode?: PaperMode): ChatRecord;
+	createChat(title: string, kind?: "practice" | "paper", paperMode?: PaperMode, subjectId?: string): ChatRecord;
+	/** File an existing session under a subject (conversion of pre-subject
+	 *  sessions). Not conversation activity. */
+	setSubject(id: string, subjectId: string): void;
 	/** The full record, or null if unknown id / corrupt file. */
 	getChat(id: string): ChatRecord | null;
 	/** All sessions, newest activity first (the sidebar's list view). */

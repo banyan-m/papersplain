@@ -35,7 +35,7 @@ function chatFile(id: string): string {
  *  phase, busy, pendingQuestion) is already announced by turn-started /
  *  turn-settled, which the sidebar refetches on. Silence here is law,
  *  not oversight. */
-function createChat(title: string, kind?: "practice" | "paper", paperMode?: PaperMode): ChatRecord {
+function createChat(title: string, kind?: "practice" | "paper", paperMode?: PaperMode, subjectId?: string): ChatRecord {
 	const now = new Date().toISOString();
 	const record: ChatRecord = {
 		id: `chat_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
@@ -47,6 +47,7 @@ function createChat(title: string, kind?: "practice" | "paper", paperMode?: Pape
 		// reads as teach — pre-practice records never migrate).
 		...(kind === "practice" ? { kind: "practice" as const } : {}),
 		...(kind === "paper" ? { kind: "paper" as const, paperMode: paperMode ?? "walkthrough" } : {}),
+		...(subjectId ? { subjectId } : {}),
 	};
 	fs.mkdirSync(PATHS.chats, { recursive: true });
 	writeChat(record);
@@ -220,6 +221,14 @@ function deleteChat(id: string): boolean {
 	}
 }
 
+/** File a session under a subject. Silent and not conversation activity. */
+function setSubject(id: string, subjectId: string): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	record.subjectId = subjectId;
+	writeChat(record);
+}
+
 /** Persist the session plan tree (plan tools call this in execute). */
 function saveTree(id: string, tree: PlanTree): void {
 	const record = getChat(id);
@@ -254,6 +263,7 @@ export const chatStore: ChatStore = {
 	saveTree,
 	saveSettings,
 	renameChat,
+	setSubject,
 	deleteChat,
 	appendTurnUsage,
 	appendExtractionUsage,

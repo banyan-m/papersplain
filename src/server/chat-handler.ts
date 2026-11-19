@@ -53,6 +53,7 @@ import { claimPreparingTurn, type TurnPreparation } from "./turn-preparation.ts"
 import { applyParkedDismissal } from "./dismissal-park.ts";
 import { sideConversationEntries } from "../core/side-chat.ts";
 import { sideChats, type SideChatService } from "./side-chat.ts";
+import { subjectPromptAppendix } from "./subjects.ts";
 import { SIDE_CONTEXT_BUDGET_ERROR, sideBudgetRetryDrops, sideContextWindow } from "./side-context-budget.ts";
 import { registerTurn, rememberTurnFailure, unregisterTurn } from "./turn-runs.ts";
 import { persistTurn, triggerExtraction, TurnPersistenceError } from "./turn-service.ts";
@@ -726,6 +727,8 @@ export async function handleChatInput(
 		// point as the tool delta — the agent layer composes the system
 		// prompt fresh per turn, swapping in any enabled override segments.
 		promptSwitches: effective.agent.prompts,
+		// papersplainer: the paper or topic this conversation belongs to.
+		promptAppendix: subjectPromptAppendix(chatId),
 	};
 	// PRACTICE BRANCH (owner design, 2026-10-04): a kind:"practice"
 	// session builds the practitioner from turn 1 — no prober→teacher

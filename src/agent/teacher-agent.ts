@@ -428,7 +428,10 @@ export function guideModeInstructions(mode: "walkthrough" | "chat"): string {
  */
 export function createGuideAgent(ctx: GuideToolContext, mode: "walkthrough" | "chat", opts: AgentBuildOptions = {}) {
 	const tools = opts.tools ?? createGuideTools(ctx, opts.toolToggles);
-	return baseAgentOptions("guide", { ...opts, promptAppendix: guideModeInstructions(mode) }, Object.values(tools));
+	// The mode paragraph first, then whatever the caller appends (the
+	// session's paper or topic — server/subjects.ts).
+	const promptAppendix = [guideModeInstructions(mode), opts.promptAppendix].filter(Boolean).join("\n\n");
+	return baseAgentOptions("guide", { ...opts, promptAppendix }, Object.values(tools));
 }
 
 export type GuideAgent = ReturnType<typeof createGuideAgent>;
