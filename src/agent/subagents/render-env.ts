@@ -17,7 +17,8 @@ import { PATHS } from "../../../config.ts";
  * micromamba, a single downloaded binary, and uv installs the rest on top. The app sets it up on first
  * launch (see app/api/render-env); a render that arrives before that
  * finishes waits for the same install. After installing, parts Manim's
- * Cairo renderer never uses are removed to save disk space (see trimEnv).
+ * Cairo renderer never uses are removed to save disk space (see trimEnv),
+ * as are unused parts of the downloaded Python itself (see trimPython).
  *
  * Overrides (development, tests, or a user who manages Python themselves):
  *   LH_MANIM_PYTHON  an existing interpreter to use as is
@@ -32,7 +33,7 @@ const PACKAGES: Record<RenderEnvKind, string[]> = {
 };
 const PYTHON_VERSION = "3.11";
 /** Bump to force a reinstall when PACKAGES changes. */
-const ENV_STAMP = "4";
+const ENV_STAMP = "5";
 
 const OVERRIDE_VAR: Record<RenderEnvKind, string> = {
 	manim: "LH_MANIM_PYTHON",
@@ -379,6 +380,9 @@ async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => voi
 		if (check.code !== 0) throw new Error(`the ${kind} environment does not import after install: ${tail(check.stderr)}`);
 		onActivity("removing unused parts");
 		await trimEnv(dir);
+		await trimManagedPythons(uvEnv.UV_PYTHON_INSTALL_DIR);
+		// A full prebuilt base carries its own standard library inside the environment.
+		if (conda === "full") await trimPython(dir, { natives: false });
 		const after = await imports();
 		if (after.code !== 0) throw new Error(`the ${kind} environment does not import after trimming: ${tail(after.stderr)}`);
 		await fs.writeFile(readyFile(kind), ENV_STAMP);
@@ -425,6 +429,69 @@ export async function trimEnv(envDir: string): Promise<void> {
 		}
 	};
 	await walk(sitePackages, 0);
+}
+
+/** Standard-library parts no render or toy dataset loads: the Tk window
+ *  toolkit and the programs built on it, the library's own tests, the pip
+ *  bootstrap (uv does the installing) and the Python 2 converter. */
+const UNUSED_STDLIB = ["tkinter", "idlelib", "turtledemo", "turtle.py", "test", "ensurepip", "lib2to3"];
+/** Compiled modules that only serve the parts above. */
+const UNUSED_NATIVE_MODULE = /^(_tkinter|_test|_ctypes_test|_xxtestfuzz|xxlimited)/;
+/** Tcl/Tk's own libraries and script folders, which only _tkinter loads. */
+const TCL_TK_ENTRY = /^(lib)?(tcl|tk|itcl|tdbc|thread)\d/i;
+
+/** Trim every Python the app downloaded for itself. `installDir` is the
+ *  app's own folder (UV_PYTHON_INSTALL_DIR), so a Python found elsewhere on
+ *  the machine and used as the environment's base is never touched. */
+export async function trimManagedPythons(installDir: string): Promise<void> {
+	let entries: fsSync.Dirent[];
+	try {
+		entries = await fs.readdir(installDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		// uv also leaves a short-named link beside each install; the real folder is enough.
+		if (entry.isDirectory() && entry.name.startsWith("cpython-")) await trimPython(path.join(installDir, entry.name), { natives: true });
+	}
+}
+
+/** Remove the unused standard-library parts from one Python install.
+ *  `natives` also removes what surrounds them in a Python the app owns
+ *  outright: Tcl/Tk's libraries, the compiled test modules, the bundled pip
+ *  and setuptools (the environment has its own packages), C headers, manual
+ *  pages and the terminal database. Measured on Linux: 96 MB down to 62 MB. */
+export async function trimPython(prefix: string, options: { natives: boolean }): Promise<void> {
+	const remove = (...parts: string[]) => fs.rm(path.join(prefix, ...parts), { recursive: true, force: true });
+	const list = async (...parts: string[]): Promise<string[]> => {
+		try {
+			return await fs.readdir(path.join(prefix, ...parts));
+		} catch {
+			return [];
+		}
+	};
+	const stdlibs: string[][] = [];
+	if (fsSync.existsSync(path.join(prefix, "Lib", "os.py"))) stdlibs.push(["Lib"]);
+	for (const entry of await list("lib")) {
+		if (entry.startsWith("python") && fsSync.existsSync(path.join(prefix, "lib", entry, "os.py"))) stdlibs.push(["lib", entry]);
+	}
+	for (const stdlib of stdlibs) {
+		for (const name of UNUSED_STDLIB) await remove(...stdlib, name);
+		if (!options.natives) continue;
+		for (const entry of await list(...stdlib, "lib-dynload")) {
+			if (UNUSED_NATIVE_MODULE.test(entry)) await remove(...stdlib, "lib-dynload", entry);
+		}
+		for (const entry of await list(...stdlib, "site-packages")) await remove(...stdlib, "site-packages", entry);
+	}
+	if (!options.natives || stdlibs.length === 0) return;
+	// Windows keeps compiled modules and Tcl/Tk's DLLs together in DLLs/.
+	for (const entry of await list("DLLs")) {
+		if (UNUSED_NATIVE_MODULE.test(entry) || /^(tcl|tk)\d+t?\.dll$/i.test(entry)) await remove("DLLs", entry);
+	}
+	for (const entry of await list("lib")) {
+		if (TCL_TK_ENTRY.test(entry)) await remove("lib", entry);
+	}
+	for (const extra of [["tcl"], ["include"], ["libs"], ["lib", "pkgconfig"], ["share", "man"], ["share", "terminfo"]]) await remove(...extra);
 }
 
 async function findSitePackages(envDir: string): Promise<string | null> {
