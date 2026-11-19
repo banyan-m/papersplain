@@ -10,9 +10,23 @@
  */
 import type { FormulaCardInput } from "../../core/formula.ts";
 import { ML_CARDS } from "./ml.ts";
+import { ML_ACTIVATION_CARDS } from "./ml-activations.ts";
+import { ML_TRAINING_CARDS } from "./ml-training.ts";
+import { ML_GENERATIVE_RL_CARDS } from "./ml-generative-rl.ts";
+import { STATS_DISTRIBUTION_CARDS } from "./stats-distributions.ts";
+import { STATS_INFERENCE_CARDS } from "./stats-inference.ts";
+import { BIO_SEQUENCE_CARDS } from "./bio-sequence.ts";
+import { BIO_MODEL_CARDS } from "./bio-models.ts";
 
 export const FORMULA_LIBRARY: Readonly<Record<string, FormulaCardInput>> = Object.freeze({
 	...ML_CARDS,
+	...ML_ACTIVATION_CARDS,
+	...ML_TRAINING_CARDS,
+	...ML_GENERATIVE_RL_CARDS,
+	...STATS_DISTRIBUTION_CARDS,
+	...STATS_INFERENCE_CARDS,
+	...BIO_SEQUENCE_CARDS,
+	...BIO_MODEL_CARDS,
 });
 
 /** Library names: lowercase words joined by hyphens. */

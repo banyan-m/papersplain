@@ -229,7 +229,7 @@ describe("the tools", () => {
 describe("the shipped library", () => {
 	it("every card has a plain name and a plot, validates, and renders in KaTeX", () => {
 		const names = Object.keys(FORMULA_LIBRARY);
-		assert.ok(names.length > 0);
+		assert.ok(names.length >= 250, `the library has ${names.length} cards`);
 		for (const name of names) {
 			assert.match(name, LIBRARY_NAME, name);
 			const checked = normalizeFormulaCard(FORMULA_LIBRARY[name]);
@@ -240,6 +240,14 @@ describe("the shipped library", () => {
 			assert.ok(checked.value.caption, `${name} has a caption`);
 		}
 		assert.equal(new Set(names.map((n) => FORMULA_LIBRARY[n]!.title)).size, names.length, "titles are unique");
+	});
+
+	it("the index the guide reads stays small enough to sit in a tool description", () => {
+		// About 4 characters per token: 12,000 characters is roughly 3,000 tokens.
+		assert.ok(libraryIndex().length < 12000, `index is ${libraryIndex().length} characters`);
+		for (const name of ["sigmoid", "relu", "film", "softmax-temperature", "normal-pdf", "phred-quality", "michaelis-menten", "hardy-weinberg"]) {
+			assert.ok(Object.hasOwn(FORMULA_LIBRARY, name), name);
+		}
 	});
 
 	it("the index lists name: title for each", () => {
