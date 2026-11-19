@@ -6,6 +6,7 @@ import { VisualCard } from "@/components/artifacts/visual-card";
 import { ImageCard } from "@/components/artifacts/image-card";
 import { ManimCard, MoleculeCard } from "@/components/artifacts/render-card";
 import { ToyDataCard } from "@/components/artifacts/toy-data-card";
+import { OutlineCard } from "@/components/artifacts/outline-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
 import { ProblemCard, ConcludeCard } from "@/components/practice-cards";
@@ -37,6 +38,8 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	// The paper cache: a figure page from the PDF (shown like a learner
 	// image) and the toy dataset job.
 	paper_figure: ImageCard,
+	// The walkthrough's position mark (one quiet line per section start).
+	outline: OutlineCard,
 	toy_data: ToyDataCard,
 	// A learner image shown as-is (issue #363): the picture itself, inline.
 	show_image: ImageCard,

@@ -17,6 +17,7 @@
 
 export * from "./contracts.ts";
 export * from "./paper-cache.ts";
+export * from "./subject-progress.ts";
 export { embedLearnerImage } from "./learner-image-svg.ts";
 export * from "./ports.ts";
 export * from "./chains.ts";

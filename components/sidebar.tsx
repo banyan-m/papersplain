@@ -403,6 +403,9 @@ export function subjectMeta(subject: SubjectListItem): string {
 	if (subject.pendingQuestion) return `Waiting for input · ${timeAgo(subject.updatedAt)}`;
 	if (subject.pendingProblem) return `Problem waiting · ${timeAgo(subject.updatedAt)}`;
 	if (subject.busy) return "Working…";
+	// Where the walkthrough stands, when it has said (a paper's sections, a
+	// topic's plan steps).
+	if (subject.position) return `${subject.kind === "paper" ? "Section" : "Step"} ${subject.position.current} of ${subject.position.total} · ${timeAgo(subject.updatedAt)}`;
 	return timeAgo(subject.updatedAt);
 }
 

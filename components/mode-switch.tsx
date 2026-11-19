@@ -28,7 +28,7 @@ export interface SubjectView {
 
 export const MODE_LABEL: Record<SubjectMode, string> = { walkthrough: "Walkthrough", chat: "Chat", practice: "Practice" };
 
-export function ModeSwitch({ subject, className }: { subject: SubjectView; className?: string }) {
+export function ModeSwitch({ subject, className, none = false }: { subject: SubjectView; className?: string; /** No mode is on screen (the Progress view): nothing is marked current. */ none?: boolean }) {
 	return (
 		<nav
 			aria-label="Mode"
@@ -38,7 +38,7 @@ export function ModeSwitch({ subject, className }: { subject: SubjectView; class
 			className={cn("lh-no-drag inline-flex items-center overflow-hidden rounded-lg border border-border/70 bg-background p-0.5", className)}
 		>
 			{SUBJECT_MODES.map((mode) => {
-				const current = mode === subject.mode;
+				const current = !none && mode === subject.mode;
 				return (
 					<Link
 						key={mode}

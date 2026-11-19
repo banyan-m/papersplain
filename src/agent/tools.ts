@@ -19,6 +19,7 @@ import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
 import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
 import { createPaperFigureTool } from "./tools/paper-figure.ts";
+import { outlineTool } from "./tools/outline.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
 import { proberGraphTools } from "./tools/graph.ts";
@@ -465,6 +466,7 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				fetch_paper: fetchPaperTool,
 				molecule: createMoleculeTool(ctx),
 				paper_figure: createPaperFigureTool(ctx),
+				outline: outlineTool,
 				...jobTools(jobContext),
 				...renderJobTools(jobContext),
 			},

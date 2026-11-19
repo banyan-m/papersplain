@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { Chat } from "@/components/chat";
 import { NewSession } from "@/components/new-session";
+import { SubjectProgressView } from "@/components/subject-progress";
 import type { SubjectView } from "@/components/mode-switch";
 import { SUBJECT_MODES, chatShapeFor, isSubjectMode, slotsConfigured } from "@/src/core";
-import { compactionInFlight, defaultModeOf, getSubject, isTurnRunning, readSettingsRecord, subjectChat, turnFailure } from "@/src/server";
+import { compactionInFlight, defaultModeOf, getSubject, isTurnRunning, readSettingsRecord, subjectChat, subjectProgress, turnFailure } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function SubjectPage({
 	searchParams,
 }: {
 	params: Promise<{ id: string }>;
-	searchParams: Promise<{ mode?: string }>;
+	searchParams: Promise<{ mode?: string; view?: string }>;
 }) {
 	const [{ id }, query] = await Promise.all([params, searchParams]);
 	const subject = getSubject(id);
@@ -32,6 +33,8 @@ export default async function SubjectPage({
 		mode,
 		modes: SUBJECT_MODES.filter((m) => subjectChat(subject, m) !== null),
 	};
+	// ?view=progress: the fourth view — not a conversation.
+	if (query.view === "progress") return <SubjectProgressView subject={view} progress={subjectProgress(subject)} />;
 	const configured = slotsConfigured(readSettingsRecord()?.models);
 	const chat = subjectChat(subject, mode);
 	if (!chat) {

@@ -111,4 +111,7 @@ export interface SubjectListItem {
 	pendingQuestion: boolean;
 	/** A practice problem is posed but not concluded. */
 	pendingProblem: boolean;
+	/** Where the walkthrough is ("Section 2 of 7"), once it has recorded an
+	 *  outline (papers) or tagged a plan node (topics). */
+	position?: { current: number; total: number };
 }

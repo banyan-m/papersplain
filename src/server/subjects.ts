@@ -22,6 +22,7 @@ import {
 	type SubjectRecord,
 } from "../core/contracts.ts";
 import type { GraphContextPick } from "../core/native-messages.ts";
+import { outlineOf, outlineSteps, planSteps, practiceResults, stepPosition, type ProgressStep, type SubjectProgress } from "../core/subject-progress.ts";
 import { chatPaperKey, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
 import { createSession, deleteChatSession, titleFromPrompt, type ChatDeleteMode, type ChatDeleteOutcome } from "./chats.ts";
 import { graphRevision } from "./graph.ts";
@@ -139,6 +140,8 @@ export function listSubjectItems(): SubjectListItem[] {
 				if (chat) chats[mode] = chat;
 			}
 			const shown = Object.values(chats);
+			const walkthrough = chats.walkthrough ? stores.chatStore.getChat(chats.walkthrough.id) : null;
+			const position = walkthrough ? stepPosition(walkthroughSteps(walkthrough)) : null;
 			return {
 				id: subject.id,
 				kind: subject.kind,
@@ -149,6 +152,7 @@ export function listSubjectItems(): SubjectListItem[] {
 				busy: shown.some((c) => isTurnRunning(c.id)),
 				pendingQuestion: shown.some((c) => c.pendingQuestion),
 				pendingProblem: shown.some((c) => c.pendingProblem),
+				...(position ? { position } : {}),
 			};
 		})
 		.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -171,14 +175,14 @@ export function subjectFromText(text: string): { subject: SubjectRecord; existin
 
 /** Propositions that came up in this subject's own conversations — what a
  *  practice conversation here should draw on. Most recent first. */
-function subjectPropositions(subject: SubjectRecord): GraphContextPick[] {
+function subjectPropositions(subject: SubjectRecord, limit = PRACTICE_PICK_LIMIT): GraphContextPick[] {
 	const own = new Set([...Object.values(subject.chats), ...(subject.shelved ?? [])].filter((id): id is string => !!id));
 	if (own.size === 0) return [];
 	return stores.graphStore
 		.readNodes()
 		.filter((node) => node.provenance.some((point) => own.has(point.chatId)))
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-		.slice(0, PRACTICE_PICK_LIMIT)
+		.slice(0, limit)
 		.map((node) => ({ id: node.id, name: node.name, statement: node.statement }));
 }
 
@@ -244,6 +248,28 @@ export function subjectPromptAppendix(chatId: string): string | undefined {
 		lines.push("Pose problems on this topic. If no propositions were picked for this conversation, the topic itself is the material.");
 	}
 	return lines.join("\n");
+}
+
+/** The walkthrough's steps: a paper's recorded outline, or a topic's plan. */
+function walkthroughSteps(chat: ChatRecord): ProgressStep[] | null {
+	const outline = outlineOf(chat.messages);
+	if (outline) return outlineSteps(outline);
+	return chat.tree && chat.tree.nodes.length > 0 ? planSteps(chat.tree, chat.messages) : null;
+}
+
+/**
+ * The Progress view's data (owner, 2026-11-19): existing records only — how
+ * far the walkthrough is, how practice went, and what the conversations
+ * added to the map. No model call and no judgement of understanding.
+ */
+export function subjectProgress(subject: SubjectRecord): SubjectProgress {
+	const walkthrough = subjectChat(subject, "walkthrough");
+	const practice = subjectChat(subject, "practice");
+	return {
+		steps: walkthrough ? walkthroughSteps(walkthrough) : null,
+		practice: practice ? practiceResults(practice.messages) : null,
+		concepts: subjectPropositions(subject, Number.POSITIVE_INFINITY),
+	};
 }
 
 export type SubjectDeleteOutcome =
