@@ -1,5 +1,6 @@
 "use client";
 
+import { AttachFilesButton } from "@/components/attach-files-button";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ViewReaderRef, NativeQuestionViewState } from "./session-view-readers";
 import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
@@ -491,6 +492,7 @@ function QuestionDockForm({
 	const [kbdIdx, setKbdIdx] = useState<number | null>(null);
 	const otherInputRef = useRef<HTMLDivElement>(null);
 	const thinkingRef = useRef<HTMLDivElement>(null);
+	const answerInputRef = useRef<HTMLDivElement>(null);
 	// One row past the options is the trailing row: quiz → don't-know,
 	// ask → Other (a question never has both). Text mode (ask/explain)
 	// has no rows — the composer IS the answer surface.
@@ -904,10 +906,11 @@ function QuestionDockForm({
 					className="rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
 				>
 					<div className="px-2.5 pt-2 text-xs font-medium text-muted-foreground">
-						{qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
+						{qd.mode === "text" ? "Your answer" : "Your thinking"}
 					</div>
 					{qd.mode === "text" ? (
 						<PathInput
+							ref={answerInputRef}
 							value={text}
 							onValueChange={(value) => {
 								answerTextRef.current = value;
@@ -973,6 +976,10 @@ function QuestionDockForm({
 						/>
 					)}
 					<div className="flex items-center justify-between gap-2 p-1">
+						{/* Attaching works while a question is open too (owner
+						    report, 2026-11-19: asked for a file, there was no way to
+						    give one). The path lands in the answer / thinking field. */}
+						<AttachFilesButton editorRef={qd.mode === "text" ? answerInputRef : thinkingRef} />
 						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
 								{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
 						</span>

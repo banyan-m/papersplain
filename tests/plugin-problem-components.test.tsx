@@ -278,7 +278,7 @@ test("sync and async submitted mount failures remove partial footer content and 
     await render(<PluginProblemSubmittedContent data={data} snapshot={snapshot} chatId="chat" registration={registration} />);
     assert.equal(context.signal.aborted, true);
     assert.equal(context.footerContainer!.isConnected, false);
-    assert.match(document.body.textContent!, /saved code|YOUR THINKING/);
+    assert.match(document.body.textContent!, /saved code|Your thinking/);
     assert.doesNotMatch(document.body.textContent!, /partial footer|partial code|PRIVATE_SOLUTION/);
   }
 });

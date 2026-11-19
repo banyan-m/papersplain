@@ -72,13 +72,13 @@ export function PluginQuestionAnswered({ snapshot, answer, chatId, registration 
 		{/* Reading precedes the question, exactly as in native answered cards.
 		    Presence remains authoritative, including defined empty channels. */}
 		{(answer.readingThinking !== undefined || !!answer.images?.readingThinking?.length) && <ThinkingBlock
-			testId="reading-thinking-block" label="YOUR THINKING" text={answer.readingThinking ?? ""} images={answer.images?.readingThinking} defaultOpen
+			testId="reading-thinking-block" label="Your thinking" text={answer.readingThinking ?? ""} images={answer.images?.readingThinking} defaultOpen
 		/>}
 		<div data-testid="plugin-question-answered" className="rounded-2xl border bg-card px-4 py-3">
 			<div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">{snapshot.label}<span ref={headerRoot} className="inline-flex items-center" /></div>
 			<PluginQuestionPresentation snapshot={snapshot} answer={answer} chatId={chatId} registration={registration} headerRoot={headerRoot} footerRoot={footerRoot} />
 			{(answer.thinking !== undefined || !!answer.images?.thinking?.length) && <ThinkingBlock
-				testId="your-thinking" label="YOUR THINKING" text={answer.thinking ?? ""} images={answer.images?.thinking} inCard
+				testId="your-thinking" label="Your thinking" text={answer.thinking ?? ""} images={answer.images?.thinking} inCard
 			/>}
 			<div ref={footerRoot} />
 		</div>

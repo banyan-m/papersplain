@@ -70,18 +70,35 @@ export function modeOfChat(chat: { kind?: ChatKind; paperMode?: PaperMode }): Su
 	return "walkthrough";
 }
 
-/** Does the New box's text name a paper? A link, or a path to a PDF (bare,
- *  or backtick-quoted as the path chip writes it) and nothing else. Anything
- *  else is a topic. */
+/** A link that names a paper by itself: a PDF, or a preprint/DOI page. */
+const PAPER_LINK = /https?:\/\/[^\s<>"'`)\]]+/gi;
+function isPaperLink(url: string): boolean {
+	return /\.pdf([?#]|$)/i.test(url) || /\/\/(www\.)?(arxiv\.org\/(abs|pdf)\/|(www\.)?(biorxiv|medrxiv)\.org\/content\/|doi\.org\/|(dx\.)?doi\.org\/|pubmed\.ncbi\.nlm\.nih\.gov\/|(www\.)?ncbi\.nlm\.nih\.gov\/pmc\/|pmc\.ncbi\.nlm\.nih\.gov\/|openreview\.net\/(pdf|forum))/i.test(url);
+}
+
+/**
+ * Does the New box's text name a paper? (Owner report, 2026-11-19: a PDF
+ * attached with a sentence around it must still open a PAPER.) In order:
+ *   - a PDF path anywhere in the text, as the path chip writes it
+ *     (backtick-quoted) — the first one;
+ *   - the whole text being one link, or one bare PDF path, or arxiv:ID;
+ *   - a link anywhere in the text that is plainly a paper (a .pdf, arXiv,
+ *     bioRxiv, medRxiv, DOI, PubMed, OpenReview).
+ * Anything else is a topic.
+ */
 export function paperSourceOf(text: string): string | null {
 	const t = text.trim();
-	if (!t || /\n/.test(t)) return null;
-	const parts = parseFilePaths(t).filter((part) => part.kind === "path" || part.text.trim() !== "");
-	const only = parts.length === 1 ? parts[0]! : null;
-	if (only?.kind === "path") return /\.pdf$/i.test(only.path) ? only.path : null;
-	if (/^https?:\/\/\S+$/i.test(t)) return t;
-	if (/^arxiv:\s*\d{4}\.\d{4,5}(v\d+)?$/i.test(t)) return t;
-	if (/\.pdf$/i.test(t) && /^(~\/|\/|[A-Za-z]:[\\/]|\\\\)/.test(t)) return t;
+	if (!t) return null;
+	for (const part of parseFilePaths(t)) if (part.kind === "path" && /\.pdf$/i.test(part.path)) return part.path;
+	if (!/\n/.test(t)) {
+		if (/^https?:\/\/\S+$/i.test(t)) return t;
+		if (/^arxiv:\s*\d{4}\.\d{4,5}(v\d+)?$/i.test(t)) return t;
+		if (/\.pdf$/i.test(t) && /^(~\/|\/|[A-Za-z]:[\\/]|\\\\)/.test(t)) return t;
+	}
+	for (const match of t.matchAll(PAPER_LINK)) {
+		const url = match[0].replace(/[.,;:!?]+$/, "");
+		if (isPaperLink(url)) return url;
+	}
 	return null;
 }
 

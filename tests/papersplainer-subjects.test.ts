@@ -28,7 +28,7 @@ const { POST: modeRoute } = await import("../app/api/subjects/[id]/chats/route.t
 const { DELETE: deleteRoute, PUT: renameRoute } = await import("../app/api/subjects/[id]/route.ts");
 const { chatStore } = await import("../src/store/chats.ts");
 const { subjectStore } = await import("../src/store/subjects.ts");
-const { chatPaperKey, setChatPaper } = await import("../src/agent/subagents/paper-cache-store.ts");
+const { chatPaperKey, setChatPaper, updateManifest } = await import("../src/agent/subagents/paper-cache-store.ts");
 const { fileLooseChats, getSubject, listSubjectItems, subjectPromptAppendix } = await import("../src/server/subjects.ts");
 
 after(() => {
@@ -60,7 +60,12 @@ describe("pure helpers", () => {
 		assert.equal(paperSourceOf("hidden Markov models"), null);
 		assert.equal(paperSourceOf("what is in report.pdf"), null, "a sentence that mentions a file is a topic");
 		assert.equal(paperSourceOf(`${quoteFilePath("/home/m/notes.txt")}`), null, "a non-PDF path is not a paper");
-		assert.equal(paperSourceOf("explain https://arxiv.org/abs/2401.01234 to me"), null);
+		assert.equal(paperSourceOf("explain https://arxiv.org/abs/2401.01234 to me"), "https://arxiv.org/abs/2401.01234", "a paper link inside a sentence is still a paper");
+		assert.equal(paperSourceOf(`walk me through this ${quoteFilePath("C:\\Users\\m\\Downloads\\af 3.pdf")} please`), "C:\\Users\\m\\Downloads\\af 3.pdf", "an attached PDF with a sentence around it is a paper");
+		assert.equal(paperSourceOf(`${quoteFilePath("/home/m/notes.txt")} and ${quoteFilePath("/home/m/af3.pdf")}`), "/home/m/af3.pdf");
+		assert.equal(paperSourceOf("see https://www.biorxiv.org/content/10.1101/2024.01.01.123456v1, it is good"), "https://www.biorxiv.org/content/10.1101/2024.01.01.123456v1");
+		assert.equal(paperSourceOf("what does https://en.wikipedia.org/wiki/Hidden_Markov_model say about decoding"), null, "an ordinary link inside a sentence stays a topic");
+		assert.equal(paperSourceOf("line one\nhttps://example.org/x.pdf"), "https://example.org/x.pdf");
 		assert.equal(paperSourceOf(""), null);
 	});
 
@@ -205,8 +210,58 @@ describe("what each agent is told", () => {
 		const walkthrough = subjectPromptAppendix(made.chatId)!;
 		assert.match(walkthrough, /https:\/\/example\.org\/told\.pdf/);
 		assert.match(walkthrough, /read it before answering/);
+		assert.match(walkthrough, /NEVER ask the learner to upload, attach, paste or send the paper/);
 		const practice = await startMode(made.id, "practice");
 		assert.match(subjectPromptAppendix(practice.body.id!)!, /Pose problems on this paper/);
+	});
+
+	it("every mode is given the file the paper was read from, once any conversation has read it", async () => {
+		const made = await newSubject("https://example.org/shared.pdf");
+		// What the pdf job records when the walkthrough first reads the paper:
+		// the session's cache key, and the manifest with the downloaded file.
+		updateManifest("00000000000000bb", "/data/papers/shared-download.pdf", () => {});
+		setChatPaper(made.chatId, "00000000000000bb");
+		const chat = await startMode(made.id, "chat", "what is the loss?");
+		const practice = await startMode(made.id, "practice", "start");
+		for (const id of [made.chatId, chat.body.id!, practice.body.id!]) {
+			const told = subjectPromptAppendix(id)!;
+			assert.match(told, /The paper is this file: `\/data\/papers\/shared-download\.pdf`/, "the cached file, not just the link");
+			assert.match(told, /The learner gave it as `https:\/\/example\.org\/shared\.pdf`/);
+			assert.match(told, /NEVER ask the learner/);
+			assert.equal(chatPaperKey(id), "00000000000000bb", "every conversation shares the paper's cache");
+		}
+	});
+
+	it("a PDF attached with a sentence around it opens a paper, not a topic", async () => {
+		const made = await newSubject(`can you walk me through ${quoteFilePath("/home/m/papers/scvi.pdf")}?`);
+		assert.equal(made.kind, "paper");
+		assert.equal(made.title, "scvi");
+		assert.equal(chatStore.getChat(made.chatId)!.kind, "paper", "the paper guide, not the teaching agent");
+		assert.match(subjectPromptAppendix(made.chatId)!, /The paper is this file: `\/home\/m\/papers\/scvi\.pdf`/);
+	});
+
+	it("a subject that was filed as a topic around a PDF is corrected, and a PDF brought into a real topic is shared", async () => {
+		// Filed as a topic by the earlier rule (the sentence hid the PDF).
+		const wrong = subjectStore.createSubject({ kind: "topic", title: "explain this" });
+		const first = chatStore.createChat("explain this", undefined, undefined, wrong.id);
+		chatStore.saveMessages(first.id, [{ id: "u1", role: "user", content: [{ type: "text", text: `explain this ${quoteFilePath("/home/m/af3.pdf")}` }], timestamp: 1 } as never]);
+		subjectStore.setChat(wrong.id, "walkthrough", first.id);
+		const fixed = getSubject(wrong.id)!;
+		assert.equal(fixed.kind, "paper");
+		assert.equal(fixed.source, "/home/m/af3.pdf");
+		const chat = await startMode(wrong.id, "chat", "and the loss?");
+		assert.match(subjectPromptAppendix(chat.body.id!)!, /The paper is this file: `\/home\/m\/af3\.pdf`/);
+
+		// A genuine topic into which a PDF was read later.
+		const topic = await newSubject("teach me variational inference");
+		updateManifest("00000000000000cc", "/home/m/vi-notes.pdf", () => {});
+		setChatPaper(topic.chatId, "00000000000000cc");
+		assert.equal(getSubject(topic.id)!.kind, "topic", "it stays a topic");
+		const topicChat = await startMode(topic.id, "chat", "what is the ELBO?");
+		const told = subjectPromptAppendix(topicChat.body.id!)!;
+		assert.match(told, /brought a PDF into this topic/);
+		assert.match(told, /`\/home\/m\/vi-notes\.pdf`/);
+		assert.ok(!told.includes("There is no paper to read here"));
 	});
 
 	it("a topic's walkthrough needs nothing; its chat is told there is no paper", async () => {

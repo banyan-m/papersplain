@@ -105,12 +105,13 @@ function shelveChat(id: string, chatId: string): SubjectRecord | null {
 	}, false);
 }
 
-function setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string }): SubjectRecord | null {
+function setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string; kind?: SubjectKind }): SubjectRecord | null {
 	return update(id, (r) => {
+		if (paper.kind) r.kind = paper.kind;
 		if (paper.paperKey) r.paperKey = paper.paperKey;
 		if (paper.source) r.source = paper.source;
 		if (paper.title?.trim()) r.title = paper.title.trim();
-	}, paper.title !== undefined);
+	}, paper.title !== undefined || paper.kind !== undefined);
 }
 
 /** Drop one conversation from the subject (it was deleted on its own). */

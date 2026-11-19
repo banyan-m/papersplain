@@ -67,7 +67,7 @@ export interface SubjectStore {
 	/** Keep a conversation with the subject without showing it. */
 	shelveChat(id: string, chatId: string): SubjectRecord | null;
 	/** Record what is learned about a paper after creation. */
-	setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string }): SubjectRecord | null;
+	setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string; kind?: SubjectKind }): SubjectRecord | null;
 	/** Remove one conversation's id from the subject. */
 	forgetChat(id: string, chatId: string): SubjectRecord | null;
 	/** Delete the subject record only; its conversations are the caller's

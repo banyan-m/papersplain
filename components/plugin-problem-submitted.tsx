@@ -49,7 +49,7 @@ function SubmittedBody({ submitted, snapshot, chatId, registration }: { submitte
       {submitted.processing && <pre className="mt-2 overflow-auto text-xs">{JSON.stringify(submitted.processing, null, 2)}</pre>}
     </div>}
     <SubmittedImages images={submitted.images?.submission} />
-    {(submitted.thinking !== "" || !!submitted.images?.thinking?.length) && <ThinkingBlock label="YOUR THINKING" text={submitted.thinking} images={submitted.images?.thinking} inCard />}
+    {(submitted.thinking !== "" || !!submitted.images?.thinking?.length) && <ThinkingBlock label="Your thinking" text={submitted.thinking} images={submitted.images?.thinking} inCard />}
     <div ref={footer} />
   </div>;
 }

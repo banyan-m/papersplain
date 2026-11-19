@@ -69,7 +69,7 @@ function subscribeUserThinking(fn: (open: boolean) => void): () => void {
 }
 
 export function ThinkingBlock({
-	label = "YOUR THINKING",
+	label = "Your thinking",
 	text,
 	images,
 	testId,
@@ -99,7 +99,7 @@ export function ThinkingBlock({
 		/* The rail GROUPS and the rail IS THE MISSING CHARACTER (owner
 		   rounds, 2026-10-05): the heading sits INSIDE the rail, and the
 		   rail's full width (border + padding) is exactly THREE CHARACTERS of
-		   the mono heading font — 'YOUR THINKING' is three chars shorter
+		   the mono heading font — 'Your thinking' is three chars shorter
 		   than 'AGENT'S THINKING', so with the user row offset by the rail
 		   and the agent row flush, the chevrons line up vertically. Three
 		   (not one, owner round 5): the wider gap reads better than the

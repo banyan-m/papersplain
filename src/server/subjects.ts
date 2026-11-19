@@ -44,16 +44,57 @@ function liveChats(subject: SubjectRecord): Partial<Record<SubjectMode, ChatReco
 	return out;
 }
 
-/** A paper's cache key becomes known only once a conversation has read the
- *  PDF (the agent layer records it per session). Copy it up to the subject
- *  the first time it is seen, so later conversations start with the cache. */
+/**
+ * Keep the subject's paper up to date (owner report, 2026-11-19: every mode
+ * must have the paper once ANY conversation in the subject has it).
+ *
+ * A PDF's cache key is known only once a conversation has read it (the
+ * agent layer records it per session). The first time it is seen it is
+ * copied up to the subject together with where the file is, and every other
+ * conversation of the subject is linked to the same cache — so figures, toy
+ * data and formula cards are theirs too. This holds for a topic that had a
+ * PDF brought into it as much as for a paper. A subject that began as a
+ * topic only because its first message wrapped the PDF in a sentence is a
+ * paper: it is corrected here.
+ */
 function withPaperKey(subject: SubjectRecord): SubjectRecord {
-	if (subject.kind !== "paper" || subject.paperKey) return subject;
-	for (const id of [...Object.values(subject.chats), ...(subject.shelved ?? [])]) {
-		const key = id ? chatPaperKey(id) : null;
-		if (key) return stores.subjectStore.setPaper(subject.id, { paperKey: key }) ?? subject;
+	let current = subject;
+	const chatIds = [...Object.values(subject.chats), ...(subject.shelved ?? [])].filter((id): id is string => !!id);
+	if (!current.paperKey) {
+		for (const id of chatIds) {
+			const key = chatPaperKey(id);
+			if (!key) continue;
+			const file = readManifest(key)?.source;
+			current = stores.subjectStore.setPaper(current.id, { paperKey: key, ...(current.source ? {} : file ? { source: file } : {}) }) ?? current;
+			break;
+		}
 	}
-	return subject;
+	if (current.kind === "topic") {
+		const walkthrough = current.chats.walkthrough ? stores.chatStore.getChat(current.chats.walkthrough) : null;
+		const named = walkthrough ? paperSourceOf(firstUserText(walkthrough)) : null;
+		if (named) current = stores.subjectStore.setPaper(current.id, { kind: "paper", source: current.source ?? named, ...(current.title === walkthrough!.title ? { title: paperTitleFromSource(named) } : {}) }) ?? current;
+	}
+	if (current.paperKey) for (const id of chatIds) if (chatPaperKey(id) !== current.paperKey && stores.chatStore.getChat(id)) setChatPaper(id, current.paperKey);
+	return current;
+}
+
+/** The learner's first message in a conversation, as text. */
+function firstUserText(chat: ChatRecord): string {
+	for (const message of chat.messages) {
+		const m = message as { role?: string; content?: unknown };
+		if (m.role !== "user") continue;
+		if (typeof m.content === "string") return m.content;
+		if (Array.isArray(m.content)) return m.content.map((part) => (typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join("");
+	}
+	return chat.title;
+}
+
+/** Where the subject's PDF can be read right now: the file the cache was
+ *  built from when it is known (for a link, the downloaded copy), else what
+ *  the learner gave. */
+function paperLocation(subject: SubjectRecord): string | null {
+	const cached = subject.paperKey ? readManifest(subject.paperKey)?.source : undefined;
+	return cached ?? subject.source ?? null;
 }
 
 export function getSubject(id: string): SubjectRecord | null {
@@ -215,45 +256,62 @@ export function startSubjectChat(subjectId: string, mode: SubjectMode, title: st
 /**
  * What a conversation's agent is told about the subject it belongs to —
  * appended to its system prompt each turn. Undefined when there is nothing
- * to add: an unfiled session, or the conversation whose own first message
- * already names the paper or topic and whose agent is built for it.
+ * to add (an unfiled session; a topic's walkthrough with no paper).
+ *
+ * The paper paragraph is what makes the three modes share the paper: it
+ * names the file, says it is already here, and forbids asking for it.
  */
 export function subjectPromptAppendix(chatId: string): string | undefined {
 	const chat = stores.chatStore.getChat(chatId);
 	const subject = chat?.subjectId ? getSubject(chat.subjectId) : null;
 	if (!chat || !subject) return undefined;
 	const mode = modeOfChat(chat);
-	if (subject.kind === "paper") {
-		const where = subject.source ? `\`${subject.source}\`` : "the PDF the learner named in another conversation on this paper";
-		const lines = [
-			"## This conversation's paper",
-			"",
-			`This conversation is about one paper, "${subject.title}". The paper is ${where}.`,
-			"The learner has separate conversations on this same paper (a walkthrough, a free chat, a practice conversation). You see only this one. Figures and toy data already made for the paper are shared and available here.",
-		];
-		if (mode === "practice") lines.push("Pose problems on this paper's method, claims and evidence. If no propositions were picked for this conversation, read the paper first (a pdf job) and pose from what it says.");
-		else {
-			lines.push("If the learner's first message does not name the paper, it is the one above: read it before answering.");
-			// Formula cards prepared for the paper in the background (the
-			// per-paper pass). Absent until it has finished.
+	const location = paperLocation(subject);
+	const paperLines = (): string[] => {
+		const lines: string[] = [];
+		if (location) {
+			lines.push(
+				`The paper is this file: \`${location}\`.${subject.source && subject.source !== location ? ` (The learner gave it as \`${subject.source}\`.)` : ""} It is already on this machine and you can read it with a \`pdf\` job at that exact path. NEVER ask the learner to upload, attach, paste or send the paper, and never say you do not have it: read it.`,
+			);
+		} else {
+			lines.push("The learner has not given the paper's file or link yet. Only in that case, ask for it once (a link or a PDF path; the attach button is in the message box).");
+		}
+		// Formula cards prepared for the paper in the background (the
+		// per-paper pass). Absent until it has finished.
+		if (mode !== "practice") {
 			const formulas = subject.paperKey ? readManifest(subject.paperKey)?.formulas : undefined;
 			const own = paperFormulaIndex(formulas);
 			if (own) lines.push(`Formula cards already prepared for this paper's own equations (show one with \`formula\`, by name; check it against the paper before relying on it): ${own}.`);
 			if (formulas && formulas.library.length > 0) lines.push(`Library formula cards this paper uses: ${formulas.library.join(", ")}.`);
 		}
+		return lines;
+	};
+	if (subject.kind === "paper") {
+		const lines = [
+			"## This conversation's paper",
+			"",
+			`This conversation is about one paper, "${subject.title}".`,
+			...paperLines(),
+			"The learner has separate conversations on this same paper (a walkthrough, a free chat, a practice conversation). You see only this one. Figures and toy data already made for the paper are shared and available here.",
+		];
+		if (mode === "practice") lines.push("Pose problems on this paper's method, claims and evidence. If no propositions were picked for this conversation, read the paper first and pose from what it says.");
+		else lines.push("Whatever the learner's first message says, the paper is the one above: read it before answering about it.");
 		return lines.join("\n");
 	}
-	if (mode === "walkthrough") return undefined;
+	if (mode === "walkthrough" && !location) return undefined;
 	const lines = [
 		"## This conversation's topic",
 		"",
-		`This conversation is about one topic, not a paper: "${subject.title}". The learner has separate conversations on the same topic (a guided walkthrough, a free chat, a practice conversation). You see only this one.`,
+		`This conversation is about one topic: "${subject.title}". The learner has separate conversations on the same topic (a guided walkthrough, a free chat, a practice conversation). You see only this one.`,
 	];
+	if (location) lines.push("The learner brought a PDF into this topic in one of those conversations.", ...paperLines());
 	if (mode === "chat") {
 		lines.push(
-			"There is no paper to read here, so the instructions about reading the paper first and staying inside the paper's own text do not apply. Everything else does: the learner leads, you answer what they ask about this topic accurately and plainly, you say when you are unsure, you never quiz or grade, and you make a visual only when it answers the question better than a paragraph would. If the learner brings a paper or a file into the conversation, read it before speaking about it.",
+			location
+				? "The learner leads: answer what they ask about this topic accurately and plainly, from the PDF where it bears on the question. Say when you are unsure, never quiz or grade, and make a visual only when it answers the question better than a paragraph would."
+				: "There is no paper to read here, so the instructions about reading the paper first and staying inside the paper's own text do not apply. Everything else does: the learner leads, you answer what they ask about this topic accurately and plainly, you say when you are unsure, you never quiz or grade, and you make a visual only when it answers the question better than a paragraph would. If the learner brings a paper or a file into the conversation, read it before speaking about it.",
 		);
-	} else {
+	} else if (mode === "practice") {
 		lines.push("Pose problems on this topic. If no propositions were picked for this conversation, the topic itself is the material.");
 	}
 	return lines.join("\n");
