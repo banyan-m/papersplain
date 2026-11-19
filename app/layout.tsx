@@ -4,6 +4,11 @@ import { GeistSans } from "geist/font/sans";
 import { connection } from "next/server";
 import "katex/dist/katex.min.css";
 import "./globals.css";
+// papersplainer: the vendored formula widgets' own styles, then the rules
+// that dress them in the app's theme (order matters).
+import "@/components/formula/vendor/latex-tangle.css";
+import "@/components/formula/vendor/formula-animation.css";
+import "@/components/formula/formula.css";
 import { AppShell, SidebarProvider } from "@/components/sidebar";
 import { ActivityProvider } from "@/components/activity-dock";
 import { ServerEventsProvider } from "@/components/server-events";

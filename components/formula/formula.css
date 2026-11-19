@@ -1,0 +1,37 @@
+/* papersplainer: the vendored formula widgets, dressed in the app's theme.
+   The widgets read their own --lt-* / --fa-* variables; these rules point
+   them at the app's tokens (and outrank the widgets' theme classes by
+   repeating the root class). The vendored CSS files are untouched. */
+.pp-formula .latex-tangle.latex-tangle {
+	--lt-surface: var(--card);
+	--lt-stage: var(--card);
+	--lt-ink: var(--foreground);
+	--lt-muted: var(--muted-foreground);
+	--lt-line: var(--border);
+	display: flex;
+	width: 100%;
+	font-family: var(--font-ui);
+}
+.pp-formula .latex-tangle__stage {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+.pp-formula .formula-animation.formula-animation {
+	--fa-surface: var(--card);
+	--fa-stage: var(--card);
+	--fa-ink: var(--foreground);
+	--fa-muted: var(--muted-foreground);
+	--fa-line: var(--border);
+	--fa-box-bg: var(--background);
+	--fa-box-ink: var(--foreground);
+	--fa-ring: var(--ring);
+	--fa-btn-bg: var(--background);
+	--fa-btn-hover: var(--accent);
+	--fa-focus: var(--ring);
+	width: 100%;
+	font-family: var(--font-ui);
+}
+.pp-formula .formula-animation.formula-animation {
+	padding: 12px 16px 10px;
+}

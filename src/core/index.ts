@@ -18,6 +18,8 @@
 export * from "./contracts.ts";
 export * from "./paper-cache.ts";
 export * from "./subject-progress.ts";
+export * from "./expr.ts";
+export * from "./formula.ts";
 export { embedLearnerImage } from "./learner-image-svg.ts";
 export * from "./ports.ts";
 export * from "./chains.ts";

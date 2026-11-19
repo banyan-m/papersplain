@@ -20,6 +20,7 @@ import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
 import { createPaperFigureTool } from "./tools/paper-figure.ts";
 import { outlineTool } from "./tools/outline.ts";
+import { createFormulaTool, derivationTool } from "./tools/formula.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
 import { proberGraphTools } from "./tools/graph.ts";
@@ -467,6 +468,8 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				molecule: createMoleculeTool(ctx),
 				paper_figure: createPaperFigureTool(ctx),
 				outline: outlineTool,
+				formula: createFormulaTool(),
+				derivation: derivationTool,
 				...jobTools(jobContext),
 				...renderJobTools(jobContext),
 			},
@@ -504,6 +507,10 @@ export function createTeacherTools(
 			// The learner-image display twin of read (issue #363): teacher
 			// only, always on — it shows the learner their own file.
 			show_image: createShowImageTool(ctx),
+			// papersplainer: formula cards and step-through derivations, instant
+			// and model-free (data in, picture out).
+			formula: createFormulaTool(),
+			derivation: derivationTool,
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
 		},
