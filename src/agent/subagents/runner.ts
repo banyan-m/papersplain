@@ -27,6 +27,7 @@ import {
 } from "../../core/contracts.ts";
 import { toyDataContext } from "../../core/paper-cache.ts";
 import { runToyDataMaker } from "./toy-data-maker.ts";
+import { ensurePaperFormulas } from "./paper-formulas.ts";
 import { chatCacheKey, chatPaperKey, chatToyData, ensurePaperFigures, paperKeyForFile, readManifest, setChatPaper, toyDir, updateManifest } from "./paper-cache-store.ts";
 import { resolvePaperOrSourcePath } from "../tools/paper-fetch.ts";
 import { runManimMaker } from "./manim-maker.ts";
@@ -144,6 +145,10 @@ const KIND_ROLE: Record<BuiltinJobKind, ModelRole> = {
 	// The toy-data maker writes and fixes a script from text reports: no vision needed.
 	dataset: "demoBuilder",
 };
+
+/** Test seam for the per-paper formula pass (its own, so scripted engines
+ *  for the other makers are never consumed by it). */
+export const paperFormulaModelOverride: { current?: PiEngine } = {};
 
 export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	const { chatStore, jobStore, deliver } = deps;
@@ -580,7 +585,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	/** First PDF read in a paper session: that PDF is the session's paper.
 	 *  Link the session to the paper's cache and collect its figure pages in
 	 *  the background. Never fails the read. */
-	function adoptPaper(chatId: string, rawPath: string): void {
+	function adoptPaper(chatId: string, rawPath: string, loop: LoopContext): void {
 		if (chatStore.getChat(chatId)?.kind !== "paper" || chatPaperKey(chatId)) return;
 		void (async () => {
 			const pdf = resolvePaperOrSourcePath(rawPath);
@@ -592,6 +597,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			updateManifest(key, pdf, (manifest) => { if (early && !manifest.toy) manifest.toy = early; });
 			if (early && !fsSync.existsSync(toyDir(key))) await fs.cp(toyDir(`chat-${chatId}`), toyDir(key), { recursive: true });
 			await ensurePaperFigures(pdf, key);
+			// Formula cards for the paper (one call on the cheap slot, the
+			// toy-data maker's role). Its spend is folded into this pdf job.
+			await ensurePaperFormulas(pdf, key, {
+				engine: paperFormulaModelOverride.current ?? deps.engineFor?.("demoBuilder"),
+				abortSignal: loop.abortSignal,
+				chatId,
+				onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
+			});
 		})().catch((err: unknown) => console.error(`[paper-cache ${chatId}]`, err));
 	}
 
@@ -661,7 +674,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		const question = typeof input?.question === "string" ? input.question : "";
 
 		try {
-			adoptPaper(job.chatId, path);
+			adoptPaper(job.chatId, path, loop);
 			jobStore.updateJob(jobId, { activity: "reading pdf" });
 			const result = await runPdfReaderAgent(
 				{ path, question },

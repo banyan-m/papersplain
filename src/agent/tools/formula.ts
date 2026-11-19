@@ -88,13 +88,18 @@ function describe(card: FormulaCard): string {
 	].join("\n");
 }
 
-export function createFormulaTool(library: Readonly<Record<string, FormulaCardInput>> = FORMULA_LIBRARY): AgentTool<typeof formulaInput> {
+export function createFormulaTool(
+	library: Readonly<Record<string, FormulaCardInput>> = FORMULA_LIBRARY,
+	/** Cards prepared for this conversation's paper (the per-paper pass);
+	 *  read fresh on every call, since the pass finishes in the background. */
+	paperCards: () => Readonly<Record<string, FormulaCardInput>> = () => ({}),
+): AgentTool<typeof formulaInput> {
 	return {
 		name: "formula",
 		label: "formula",
 		description:
 			"Show a formula the learner can play with: the formula with its parts explained by arrows, coloured numbers he drags in place, and a plot that redraws as he drags. Instant. " +
-			"Use it when a formula's behaviour is the point: how a parameter changes a curve, a distribution, a score. Give `name` for a library card, or `card` to write one for a formula the library lacks " +
+			"Use it when a formula's behaviour is the point: how a parameter changes a curve, a distribution, a score. Give `name` for a library card (or a card prepared for this paper, when you have been given their names), or `card` to write one for a formula neither has " +
 			"(for a formula from the paper, keep the paper's notation and say which equation it is). Exactly one of the two. " +
 			`Library cards: ${libraryIndex(library)}.`,
 		parameters: formulaInput,
@@ -102,8 +107,10 @@ export function createFormulaTool(library: Readonly<Record<string, FormulaCardIn
 			if ((name === undefined) === (card === undefined)) throw new Error("give exactly one of name (a library card) or card (a card you write)");
 			let source: unknown = card;
 			if (name !== undefined) {
-				const found = Object.hasOwn(library, name.trim()) ? library[name.trim()] : undefined;
-				if (!found) throw new Error(`there is no library card named "${name}". Use a name from the list in this tool's description, or write the card yourself with card.`);
+				const wanted = name.trim();
+				const prepared = paperCards();
+				const found = Object.hasOwn(prepared, wanted) ? prepared[wanted] : Object.hasOwn(library, wanted) ? library[wanted] : undefined;
+				if (!found) throw new Error(`there is no card named "${name}". Use a name from the library list in this tool's description or from the cards prepared for this paper, or write the card yourself with card.`);
 				source = found;
 			}
 			const checked = normalizeFormulaCard(source);

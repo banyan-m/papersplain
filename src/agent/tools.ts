@@ -20,6 +20,7 @@ import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
 import { createPaperFigureTool } from "./tools/paper-figure.ts";
 import { outlineTool } from "./tools/outline.ts";
+import { chatCacheKey, readManifest } from "./subagents/paper-cache-store.ts";
 import { createFormulaTool, derivationTool } from "./tools/formula.ts";
 import { planTools, type PlanToolContext } from "./tools/plan.ts";
 import { probeDoneTool, type ProbeDoneContext } from "./tools/probe.ts";
@@ -468,7 +469,8 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				molecule: createMoleculeTool(ctx),
 				paper_figure: createPaperFigureTool(ctx),
 				outline: outlineTool,
-				formula: createFormulaTool(),
+				// Library cards, plus the cards prepared for this conversation's paper.
+				formula: createFormulaTool(undefined, () => readManifest(chatCacheKey(ctx.chatId))?.formulas?.cards ?? {}),
 				derivation: derivationTool,
 				...jobTools(jobContext),
 				...renderJobTools(jobContext),

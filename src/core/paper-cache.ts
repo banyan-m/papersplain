@@ -7,6 +7,8 @@
  * keyed by the PDF's content, so two sessions on the same file share it.
  */
 
+import type { FormulaCardInput } from "./formula.ts";
+
 export interface PaperFigure {
 	/** The figure's number as printed ("Figure 3" → 3). */
 	number: number;
@@ -47,6 +49,21 @@ export interface PaperManifest {
 	/** Absent until figure extraction has run; empty when it found none. */
 	figures?: PaperFigure[];
 	toy?: ToyData;
+	/** Absent until the formula pass has run for this paper. */
+	formulas?: PaperFormulas;
+}
+
+/** Formula cards prepared for one paper (agent/subagents/paper-formulas.ts):
+ *  the library cards it uses, and cards for its own equations by name. */
+export interface PaperFormulas {
+	library: string[];
+	cards: Record<string, FormulaCardInput>;
+	createdAt: string;
+}
+
+/** "name: title; …" for a paper's own prepared cards. */
+export function paperFormulaIndex(formulas: PaperFormulas | undefined): string {
+	return formulas ? Object.entries(formulas.cards).map(([name, card]) => `${name}: ${card.title}`).join("; ") : "";
 }
 
 /** A safe cache file name: one path segment, no leading dot. */

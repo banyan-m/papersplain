@@ -200,12 +200,12 @@ describe("the tools", () => {
 	});
 
 	it("refuses an unknown name, both or neither argument, and a card that would not draw — with every reason", async () => {
-		await assert.rejects(() => run({ name: "nope" }), /no library card named "nope"/);
+		await assert.rejects(() => run({ name: "nope" }), /no card named "nope"/);
 		await assert.rejects(() => run({}), /exactly one of name/);
 		await assert.rejects(() => run({ name: "sig", card: SIGMOID }), /exactly one of name/);
 		await assert.rejects(() => run({ card: { ...SIGMOID, notes: {}, plot: { kind: "curve", x: { min: 0, max: 1 }, curves: [{ expr: "q" }] } } }), /missing note for marker/);
 		await assert.rejects(() => run({ card: { ...SIGMOID, latex: String.raw`\frac{\note{steep}{\tangle{k}}}{\tangle{x0}` } }), /latex does not render/);
-		await assert.rejects(() => run({ name: "constructor" }), /no library card named/);
+		await assert.rejects(() => run({ name: "constructor" }), /no card named/);
 	});
 
 	it("the tool's description carries the library index", () => {

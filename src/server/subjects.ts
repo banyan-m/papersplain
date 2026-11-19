@@ -23,7 +23,8 @@ import {
 } from "../core/contracts.ts";
 import type { GraphContextPick } from "../core/native-messages.ts";
 import { outlineOf, outlineSteps, planSteps, practiceResults, stepPosition, type ProgressStep, type SubjectProgress } from "../core/subject-progress.ts";
-import { chatPaperKey, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
+import { chatPaperKey, readManifest, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
+import { paperFormulaIndex } from "../core/paper-cache.ts";
 import { createSession, deleteChatSession, titleFromPrompt, type ChatDeleteMode, type ChatDeleteOutcome } from "./chats.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
@@ -231,7 +232,15 @@ export function subjectPromptAppendix(chatId: string): string | undefined {
 			"The learner has separate conversations on this same paper (a walkthrough, a free chat, a practice conversation). You see only this one. Figures and toy data already made for the paper are shared and available here.",
 		];
 		if (mode === "practice") lines.push("Pose problems on this paper's method, claims and evidence. If no propositions were picked for this conversation, read the paper first (a pdf job) and pose from what it says.");
-		else lines.push("If the learner's first message does not name the paper, it is the one above: read it before answering.");
+		else {
+			lines.push("If the learner's first message does not name the paper, it is the one above: read it before answering.");
+			// Formula cards prepared for the paper in the background (the
+			// per-paper pass). Absent until it has finished.
+			const formulas = subject.paperKey ? readManifest(subject.paperKey)?.formulas : undefined;
+			const own = paperFormulaIndex(formulas);
+			if (own) lines.push(`Formula cards already prepared for this paper's own equations (show one with \`formula\`, by name; check it against the paper before relying on it): ${own}.`);
+			if (formulas && formulas.library.length > 0) lines.push(`Library formula cards this paper uses: ${formulas.library.join(", ")}.`);
+		}
 		return lines.join("\n");
 	}
 	if (mode === "walkthrough") return undefined;
