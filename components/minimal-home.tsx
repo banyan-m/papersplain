@@ -73,7 +73,7 @@ export function KnowledgeSummary({
 			</p>
 			{empty && (
 				<div className="pt-2 font-ui text-xs text-muted-foreground/70">
-					<p>Start a session to begin learning.</p>
+					<p>Open a paper or start a topic to begin.</p>
 					<p className="mt-1">Attach your material with the paperclip or drag and drop.</p>
 				</div>
 			)}

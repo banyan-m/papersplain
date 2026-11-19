@@ -160,6 +160,7 @@ export interface ChatRecord {
     imageSnapshots?: Record<string, ImageSnapshot>;
     kind?: ChatKind;
     paperMode?: PaperMode;
+    subjectId?: string;
     tree?: PlanTree;
     turns?: TurnUsage[];
     extractions?: ExtractionRunUsage[];
@@ -181,6 +182,7 @@ export interface ChatRecord {
 - [imageSnapshots](#chatrecord-imagesnapshots)
 - [kind](#chatrecord-kind)
 - [paperMode](#chatrecord-papermode)
+- [subjectId](#chatrecord-subjectid)
 - [tree](#chatrecord-tree)
 - [turns](#chatrecord-turns)
 - [extractions](#chatrecord-extractions)
@@ -240,6 +242,15 @@ Paper sessions only; absent reads as walkthrough.
 
 ```ts
 paperMode?: PaperMode;
+```
+
+### ChatRecord subjectId
+
+papersplainer: the paper or topic this conversation belongs to
+(contracts/subject.ts). Absent on a session not yet filed.
+
+```ts
+subjectId?: string;
 ```
 
 ### ChatRecord tree
@@ -373,6 +384,8 @@ export interface ChatSummary {
     createdAt: string;
     updatedAt: string;
     kind: ChatKind;
+    paperMode?: PaperMode;
+    subjectId?: string;
     messageCount: number;
     phase: Phase3;
     pendingQuestion: boolean;
@@ -381,7 +394,7 @@ export interface ChatSummary {
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [Phase3](phases.md#phase3).
+**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [PaperMode](contracts-chat.md#papermode), [Phase3](phases.md#phase3).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -390,6 +403,8 @@ export interface ChatSummary {
 - [createdAt](#chatsummary-createdat)
 - [updatedAt](#chatsummary-updatedat)
 - [kind](#chatsummary-kind)
+- [paperMode](#chatsummary-papermode)
+- [subjectId](#chatsummary-subjectid)
 - [messageCount](#chatsummary-messagecount)
 - [phase](#chatsummary-phase)
 - [pendingQuestion](#chatsummary-pendingquestion)
@@ -426,6 +441,22 @@ Normalized kind (absent record field reads as teach).
 
 ```ts
 kind: ChatKind;
+```
+
+### ChatSummary paperMode
+
+Paper sessions only.
+
+```ts
+paperMode?: PaperMode;
+```
+
+### ChatSummary subjectId
+
+The owning paper or topic, when filed.
+
+```ts
+subjectId?: string;
 ```
 
 ### ChatSummary messageCount

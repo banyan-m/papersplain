@@ -18,7 +18,7 @@ import { parseHTML } from "linkedom";
 const draft = <DraftShell busy={false} text="Preserved draft" onChange={() => {}} onSend={() => {}} />;
 type Page = { name: string; path: string; node: ReactNode; floating: boolean; content: string };
 const pages: Page[] = [
-	{ name: "Home graph", path: "/", node: <Home initialConfigured rendering />, floating: true, content: '[data-testid="home-mode-switch"]' },
+	{ name: "Home graph", path: "/", node: <Home initialConfigured rendering />, floating: true, content: '[data-testid="home-new-box"]' },
 	{ name: "Home chains", path: "/", node: <Home initialConfigured rendering={false} />, floating: true, content: '[data-testid="open-chain-table"]' },
 	{ name: "New draft", path: "/chat/new", node: draft, floating: true, content: '[data-testid="composer"]' },
 	{ name: "Plugin view", path: "/plugins/fixture/overview", node: <PluginViewScreen pluginId="fixture" viewId="overview" />, floating: false, content: '[data-page-plugin-input]' },
@@ -103,7 +103,7 @@ for (const page of pages) it(`${page.name}: covers page content but not native c
 	if (page.name.startsWith("Home")) {
 		assert.equal(body.className, "absolute inset-0");
 		assert.ok(body.querySelector('main.absolute.inset-0'));
-		assert.ok(body.querySelector('[data-testid="home-mode-switch"]'), "graph and composer share coverage");
+		assert.ok(body.querySelector('[data-testid="home-new-box"]'), "graph and composer share coverage");
 	} else if (page.floating) assert.equal(body.className, "relative flex min-h-0 flex-1");
 	else {
 		assert.equal(body.className, "relative flex min-h-0 min-w-0 flex-1 flex-col");
