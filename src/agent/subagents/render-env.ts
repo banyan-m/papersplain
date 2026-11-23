@@ -31,6 +31,13 @@ const PACKAGES: Record<RenderEnvKind, string[]> = {
 	// h5py (about 15 MB) lets toy datasets include real HDF5 / AnnData-layout files.
 	manim: ["manim", "h5py"],
 };
+/** Packages that must come prebuilt: building them needs a compiler, pkg-config
+ *  and FFmpeg's headers, which an ordinary machine does not have. Without this
+ *  uv picks the newest release and tries to build it when that release has no
+ *  download for the machine (PyAV 16 and later need macOS 14); with it, uv
+ *  settles on the newest release that does (PyAV 15 on macOS 13, and an older
+ *  Manim with PyAV 13 on macOS 12). */
+const PREBUILT_ONLY = ["av"];
 const PYTHON_VERSION = "3.11";
 /** Bump to force a reinstall when PACKAGES changes. */
 const ENV_STAMP = "5";
@@ -346,7 +353,7 @@ async function installEnv(kind: RenderEnvKind, onActivity: (line: string) => voi
 	const python = venvPython(kind);
 	const pipInstall = async (): Promise<void> => {
 		onActivity(`installing ${PACKAGES[kind].join(", ")} (first run, this can take several minutes)`);
-		const pip = await runProcess(uv, ["pip", "install", "--python", python, ...PACKAGES[kind]], { signal, timeoutMs: 30 * 60_000, env: uvEnv });
+		const pip = await runProcess(uv, ["pip", "install", "--python", python, ...PREBUILT_ONLY.flatMap((name) => ["--only-binary", name]), ...PACKAGES[kind]], { signal, timeoutMs: 30 * 60_000, env: uvEnv });
 		if (pip.code !== 0) throw new Error(`installing ${PACKAGES[kind].join(", ")} failed: ${tail(pip.stderr)}`);
 	};
 	const imports = () => runProcess(python, IMPORT_CHECK, { signal, timeoutMs: 5 * 60_000, scrubEnv: true });
