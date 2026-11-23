@@ -101,6 +101,15 @@ extraResources:
     to: server
     filter:
       - "standalone/**/*"
+      # papersplainer size trim: three folders the trace or the server build
+      # leaves at the server root that nothing reads while the app runs —
+      # the repo's test suite, its documentation, and the unpacked copy of
+      # the plugin kit. The kit's downloadable ZIP (public/plugin-authoring)
+      # stays, so the Settings download keeps working. Anchored at the
+      # server root: a dependency's own docs/ or tests/ folder is untouched.
+      - "!standalone/tests{,/**/*}"
+      - "!standalone/docs{,/**/*}"
+      - "!standalone/plugin-authoring{,/**/*}"
 mac:
   # The backend's --require runs before Next loads. Keep this resource
   # outside app.asar so early Node-mode loading needs no ASAR support.
