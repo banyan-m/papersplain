@@ -8,8 +8,9 @@ on:
     branches: [windows-build]
   workflow_dispatch:
 
+# contents: write lets the last step publish the installer to the "latest-build" release.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: papersplainer-windows-${{ github.ref }}
@@ -65,3 +66,21 @@ jobs:
           node scripts/smoke-provider-runtime.mjs --standalone "$payload" --runtime "dist/win-unpacked/Papersplainer.exe"
       - name: Exercise packaged demo runtime
         run: node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/Papersplainer.exe --browser
+      # Runs last, so only a build that passed the packaged-app checks is
+      # published. One rolling release with fixed file names gives a permanent
+      # download link. It is marked a pre-release so the app's update check,
+      # which reads the newest full release, keeps finding nothing.
+      - name: Publish to the latest-build release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          installer=$(ls dist/*setup.exe | head -1)
+          cp "$installer" "Papersplainer-windows-x64-setup.exe"
+          gh release view latest-build >/dev/null 2>&1 || gh release create latest-build --prerelease --target "$GITHUB_SHA" \
+            --title "Latest build" --notes "Newest installers, replaced by every successful build." || true
+          gh release upload latest-build "Papersplainer-windows-x64-setup.exe" --clobber
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-build" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          echo "Windows: built from $GITHUB_REF_NAME at ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)" > "Papersplainer-windows-x64-setup.exe.txt"
+          gh release upload latest-build "Papersplainer-windows-x64-setup.exe.txt" --clobber
