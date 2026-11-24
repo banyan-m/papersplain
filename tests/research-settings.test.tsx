@@ -39,7 +39,7 @@ it("keyless settings keep Research interactive while search-engine setup retains
 	let written: AgentSettings | undefined;
 	try {
 		await act(async () => {
-			root.render(<InteractionLayersProvider><AgentSection
+			root.render(<InteractionLayersProvider><AgentSection initialAdvanced
 				agent={{ tools: { research: true } }}
 				models={undefined}
 				graph={undefined}
@@ -104,7 +104,7 @@ it(`a ${label}-only key enables the engine menu and selecting ${label} saves the
 	const root = createRoot(document.getElementById("root")!);
 	let written: AgentSettings | undefined;
 	try {
-		await act(async () => root.render(<InteractionLayersProvider><AgentSection agent={undefined} models={undefined} graph={undefined} compaction={undefined}
+		await act(async () => root.render(<InteractionLayersProvider><AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} compaction={undefined}
 			onSectionChange={(next) => { written = next; return true; }} onModelsChange={() => {}} onCompactionChange={() => true} /></InteractionLayersProvider>));
 		const trigger = document.querySelector<HTMLButtonElement>('[data-testid="search-engine-trigger"]')!;
 		assert.ok(!trigger.hasAttribute("disabled"));

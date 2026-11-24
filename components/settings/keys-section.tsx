@@ -91,6 +91,16 @@ export const CUSTOM_PROVIDER_INFO: ProviderKeyInfo = {
 	label: CUSTOM_PROVIDER.label,
 };
 
+/** papersplainer: the three providers that always show a key row, set or
+ *  not (Michael, 2026-11-24: "why is there no provider key for Claude").
+ *  Every other provider stays behind the Add dropdown. */
+export const FIXED_PROVIDER_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"] as const;
+const FIXED_PROVIDER_LABELS: Record<string, string> = {
+	ANTHROPIC_API_KEY: "Anthropic (Claude)",
+	OPENAI_API_KEY: "OpenAI",
+	GEMINI_API_KEY: "Google (Gemini)",
+};
+
 /** The classification driving the table groups. Pure — exported for
  *  tests. OpenRouter is un-pinned (wave-5 owner ruling): no synthesis,
  *  no special row — it rides the same provider classification. */
@@ -133,11 +143,17 @@ export function classifyKeys(
 		// renders as a provider row so nothing disappears)
 		else providerRows.push(s);
 	}
+	const fixed = new Set<string>(FIXED_PROVIDER_KEYS);
 	return {
-		providerRows,
+		// The fixed three first, in their own order (synthesized "not set"
+		// when absent), then the other stored keys in GET order.
+		providerRows: [
+			...FIXED_PROVIDER_KEYS.map((id) => byId.get(id) ?? synth(id)),
+			...providerRows.filter((s) => !fixed.has(s.id)),
+		],
 		toolRows: TOOL_IDS.map((id) => byId.get(id) ?? synth(id)),
 		unknownRows,
-		addable: (providers ?? []).filter((p) => !byId.has(p.envVar)),
+		addable: (providers ?? []).filter((p) => !byId.has(p.envVar) && !fixed.has(p.envVar)),
 	};
 }
 
@@ -489,7 +505,7 @@ export function KeysSection({
 				{providerRows.map((status) => (
 					<KeyTableRow
 						key={status.id}
-						label={providerKeyLabel(status.id, providers) ?? status.info?.label ?? status.id}
+						label={FIXED_PROVIDER_LABELS[status.id] ?? providerKeyLabel(status.id, providers) ?? status.info?.label ?? status.id}
 						docsUrl={status.info?.docsUrl}
 						status={status}
 						expanded={openRow === status.id}

@@ -107,7 +107,7 @@ describe("SettingsDialog (the designed surface, SSR)", () => {
 describe("the shared settings dropdown trigger", () => {
 	it("Agent, Appearance and dictation use the same compact dark mono trigger", () => {
 		const surfaces = [
-			[renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />), "slot-model-strong"],
+			[renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />), "slot-model-strong"],
 			[renderToStaticMarkup(<AppearanceSection appearance={undefined} onSectionChange={() => true} />), "font-trigger"],
 			[renderToStaticMarkup(<DictationLanguageSetting />), "dictation-language"],
 		] as const;
@@ -153,12 +153,12 @@ describe("Providers settings-label typography", () => {
 describe("AgentSection (thin SSR)", () => {
 	it("reasoning token estimation is an accessible Context toggle, off by default and reflecting saved choices", () => {
 		for (const includeReasoning of [undefined, false, true]) {
-			const html = renderToStaticMarkup(<AgentSection
+			const html = renderToStaticMarkup(<AgentSection initialAdvanced
 				agent={undefined} models={undefined} graph={undefined}
 				compaction={includeReasoning === undefined ? undefined : { thresholdTokens: 120_000, includeReasoning }}
 				onSectionChange={() => {}} onModelsChange={() => {}} onCompactionChange={() => {}}
 			/>);
-			const context = html.split('data-testid="group-context"')[1]?.split('data-testid="group-prompts"')[0] ?? "";
+			const context = html.split('data-testid="group-advanced"')[1] ?? "";
 			const toggle = tagOf(context, "toggle-include-reasoning-in-token-estimates-openai-responses-only-");
 			assert.ok(toggle.includes('role="switch"'));
 			assert.ok(toggle.includes(`aria-checked="${includeReasoning === true}"`));
@@ -166,12 +166,12 @@ describe("AgentSection (thin SSR)", () => {
 			assert.ok(context.includes(">Include reasoning in token estimates (OpenAI Responses only)</span>"));
 			assert.ok(context.includes("Off uses the original text-based estimate."));
 			assert.ok(context.indexOf('data-testid="compaction-row-threshold"') < context.indexOf('data-testid="compaction-row-reasoning"'),
-				"the opt-in sits below the threshold within Context");
+				"the opt-in sits below the threshold within Advanced");
 		}
 	});
 	it("Models exposes worker concurrency with exact help text and an unset default of 8", () => {
 		const render = (agent: { workerRequestConcurrency?: number } | undefined) => renderToStaticMarkup(
-			<AgentSection agent={agent} models={undefined} graph={undefined} compaction={undefined} onSectionChange={() => true} onModelsChange={() => {}} onCompactionChange={() => true} />,
+			<AgentSection initialAdvanced agent={agent} models={undefined} graph={undefined} compaction={undefined} onSectionChange={() => true} onModelsChange={() => {}} onCompactionChange={() => true} />,
 		);
 		const html = render(undefined);
 		assert.ok(html.includes("Concurrent worker requests"));
@@ -179,12 +179,12 @@ describe("AgentSection (thin SSR)", () => {
 		const input = tagOf(html, "input-worker-request-concurrency");
 		for (const attribute of ['type="number"', 'min="1"', 'step="1"', 'placeholder="8"', 'value=""']) assert.ok(input.includes(attribute), attribute);
 		assert.ok(!input.includes('max="'), "no arbitrary ceiling");
-		assert.ok(html.indexOf('data-testid="worker-request-concurrency-row"') < html.indexOf('data-testid="group-tools"'), "row belongs to Models");
+		assert.ok(html.indexOf('data-testid="worker-request-concurrency-row"') > html.indexOf('data-testid="group-advanced"'), "row belongs to Advanced");
 		assert.ok(tagOf(render({ workerRequestConcurrency: 23 }), "input-worker-request-concurrency").includes('value="23"'));
 	});
 
 	it("renders the three model SLOT rows (slots-only, fix wave: unpicked reads —, no Default option)", () => {
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		const html = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
 		for (const slot of ["strong", "cheap", "vision"]) {
 			assert.ok(html.includes(`data-testid="slot-row-${slot}"`), slot);
 			// The shared model-picker dropdown as the opened menu (owner,
@@ -206,30 +206,32 @@ describe("AgentSection (thin SSR)", () => {
 		}
 		assert.ok(html.includes('data-testid="group-models"'), "Models sub-group");
 		assert.ok(html.includes('data-testid="group-tools"'), "Tools sub-group");
-		assert.ok(html.includes('data-testid="group-prompts"'), "System prompts sub-group");
+		// papersplainer (2026-11-24): the prompts left Settings for /how-it-works.
+		assert.ok(!html.includes('data-testid="group-prompts"'), "no System prompts sub-group");
+		assert.ok(html.includes('data-testid="group-advanced"'), "Advanced sub-group");
 	});
 
 	it("the search-engine row renders with its live reason (search wave 2026-09-20)", () => {
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		const html = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
 		assert.ok(html.includes('data-testid="search-engine-row"'), "the row");
 		assert.ok(html.includes('data-testid="search-engine-trigger"'), "the trigger");
 		// SSR: /api/search never fired → no reason line yet, trigger reads Automatic
 		assert.ok(html.includes("Automatic"), "unset engine reads Automatic");
 		// the explicit preference shows the chosen engine in the trigger
 		const html2 = renderToStaticMarkup(
-			<AgentSection agent={{ search: { engine: "tavily" } }} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={{ search: { engine: "tavily" } }} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />,
 		);
 		assert.ok(html2.includes("Tavily"), "pinned engine visible in the trigger");
 		const exa = renderToStaticMarkup(
-			<AgentSection agent={{ search: { engine: "exa" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={{ search: { engine: "exa" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
 		);
 		assert.ok(exa.includes("Exa"), "an Exa pin retains its label in the trigger");
 		const html3 = renderToStaticMarkup(
-			<AgentSection agent={{ search: { engine: "firecrawl" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={{ search: { engine: "firecrawl" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
 		);
 		assert.ok(html3.includes("Firecrawl"), "a Firecrawl pin reads by its label");
 		const ollama = renderToStaticMarkup(
-			<AgentSection agent={{ search: { engine: "ollama" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={{ search: { engine: "ollama" } }} models={undefined} graph={undefined} onSectionChange={() => {}} onModelsChange={() => {}} />,
 		);
 		assert.ok(ollama.includes("Ollama"), "an Ollama pin reads by its label");
 	});
@@ -237,7 +239,7 @@ describe("AgentSection (thin SSR)", () => {
 	it("the prober graph-tools row: FIRST in the Tools group, default ON, its own key (wave 7)", () => {
 		// Default state: graph on, graphTools absent → ON, the describing
 		// hint rides (the search-row hint discipline).
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		const html = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
 		const toolsGroup = html.split('data-testid="group-tools"')[1] ?? "";
 		const rows = [...toolsGroup.matchAll(/data-testid="(graph-tools-row|tool-row-\w+)"/g)].map((m) => m[1]);
 		assert.equal(rows[0], "graph-tools-row", "graph tools is the FIRST row of the Tools group");
@@ -250,7 +252,7 @@ describe("AgentSection (thin SSR)", () => {
 
 	it("graph disabled dims the graph-tools row with the honest hint (the predicate composes)", () => {
 		const html = renderToStaticMarkup(
-			<AgentSection agent={undefined} models={undefined} graph={{ enabled: false }} onSectionChange={() => true} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={undefined} models={undefined} graph={{ enabled: false }} onSectionChange={() => true} onModelsChange={() => {}} />,
 		);
 		const row = html.split('data-testid="graph-tools-row"')[1]?.split('data-testid="tool-row-')[0] ?? "";
 		assert.ok(row.includes("opacity-40"), "row dims when the graph is off");
@@ -260,7 +262,7 @@ describe("AgentSection (thin SSR)", () => {
 
 	it("an explicit graphTools off shows stored-off (the record never lies)", () => {
 		const html = renderToStaticMarkup(
-			<AgentSection agent={{ graphTools: { enabled: false } }} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />,
+			<AgentSection initialAdvanced agent={{ graphTools: { enabled: false } }} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />,
 		);
 		const row = html.split('data-testid="graph-tools-row"')[1] ?? "";
 		assert.ok(row.includes('aria-checked="false"'), "stored-off renders off");
@@ -268,12 +270,12 @@ describe("AgentSection (thin SSR)", () => {
 
 	it("renders the owner's FINAL tool list — research, demo, visual, pdf", () => {
 		assert.deepEqual([...TOGGLE_TOOLS], ["research", "demo", "visual", "pdf"]);
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		const html = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
 		for (const id of TOGGLE_TOOLS) assert.ok(html.includes(`data-testid="tool-row-${id}"`), id);
 	});
 
 	it("tools default ON (absent key = enabled)", () => {
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		const html = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
 		for (const id of TOGGLE_TOOLS) {
 			assert.ok(tagOf(html, `toggle-tool-${id}`).includes('aria-checked="true"'), `${id} defaults on`);
 		}
@@ -281,7 +283,7 @@ describe("AgentSection (thin SSR)", () => {
 
 	it("an overridden SLOT shows its model in the trigger, tools carry the delta", () => {
 		const html = renderToStaticMarkup(
-			<AgentSection
+			<AgentSection initialAdvanced
 				agent={{ tools: { demo: false } }}
 				models={{ strong: { model: { provider: "zai", id: "glm-4.7-flash" } } }}
 				onSectionChange={() => true}
@@ -295,9 +297,16 @@ describe("AgentSection (thin SSR)", () => {
 		assert.ok(tagOf(html, "toggle-tool-visual").includes('aria-checked="true"'), "visual still on");
 	});
 
-	it("prompts show the loading state under SSR (effects never fire)", () => {
-		const html = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
-		assert.ok(html.includes("Loading prompt segments"));
+	it("papersplainer: only models, quizzing and file access show until Advanced is opened", () => {
+		const folded = renderToStaticMarkup(<AgentSection agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		for (const shown of ["slot-row-strong", "slot-row-cheap", "slot-row-vision", "quiz-mechanics-row", "file-access-row", "models-advanced"]) {
+			assert.ok(folded.includes(`data-testid="${shown}"`), `${shown} is visible`);
+		}
+		const advanced = ["worker-request-concurrency-row", "graph-tools-row", "tool-row-research", "tool-row-demo", "tool-row-visual", "tool-row-pdf", "search-engine-row", "compaction-row-threshold", "compaction-row-reasoning"];
+		for (const hidden of advanced) assert.ok(!folded.includes(`data-testid="${hidden}"`), `${hidden} is folded away`);
+		assert.ok(!folded.includes("Loading prompt segments"));
+		const open = renderToStaticMarkup(<AgentSection initialAdvanced agent={undefined} models={undefined} graph={undefined} onSectionChange={() => true} onModelsChange={() => {}} />);
+		for (const row of advanced) assert.ok(open.includes(`data-testid="${row}"`), `${row} shows when opened`);
 	});
 });
 

@@ -248,7 +248,7 @@ it("worker/compaction adapters acknowledge invalid, accepted and unset outcomes"
 	function Agent() {
 		const [value, setValue] = React.useState<AgentSettings>({});
 		const [compact, setCompact] = React.useState<CompactionSettings>({});
-		return <AgentSection agent={value} models={undefined} graph={undefined} compaction={compact}
+		return <AgentSection initialAdvanced agent={value} models={undefined} graph={undefined} compaction={compact}
 			onModelsChange={() => {}} onSectionChange={next => { agent.push(next); setValue(next); return true; }}
 			onCompactionChange={next => { compaction.push(next); setCompact(next); return true; }} />;
 	}

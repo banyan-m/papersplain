@@ -281,18 +281,20 @@ describe("classifyKeys — the Keys section's two-group projection", () => {
 
 	it("OpenRouter is UN-pinned (wave-5 owner ruling): no row when absent, a row when stored", () => {
 		const none = classifyKeys([], providers);
-		assert.equal(none.providerRows.length, 0); // nothing synthesized
+		// papersplainer: only the fixed three are synthesized
+		assert.deepEqual(none.providerRows.map((r) => r.id), ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]);
+		assert.ok(none.providerRows.every((r) => !r.present));
 		assert.ok(none.addable.some((p) => p.id === "openrouter")); // it's just an Add option
 		const stored = classifyKeys([synth("OPENROUTER_API_KEY", true)], providers);
-		assert.equal(stored.providerRows.length, 1);
-		assert.equal(stored.providerRows[0]!.id, "OPENROUTER_API_KEY");
+		assert.equal(stored.providerRows.length, 4);
+		assert.equal(stored.providerRows[3]!.id, "OPENROUTER_API_KEY");
 		assert.ok(!stored.addable.some((p) => p.id === "openrouter"));
 	});
 
 	it("stored provider keys land in providerRows; the Add dropdown drops them", () => {
 		const out = classifyKeys([synth("GROQ_API_KEY", true)], providers);
-		assert.equal(out.providerRows.length, 1);
-		assert.equal(out.providerRows[0]!.id, "GROQ_API_KEY");
+		assert.equal(out.providerRows.length, 4);
+		assert.equal(out.providerRows[3]!.id, "GROQ_API_KEY");
 		// the Add dropdown no longer offers groq
 		assert.ok(!out.addable.some((p) => p.id === "groq"));
 		assert.ok(out.addable.some((p) => p.id === "deepseek"));
@@ -315,7 +317,21 @@ describe("classifyKeys — the Keys section's two-group projection", () => {
 	it("unknown file vars surface read-only, out of the provider rows", () => {
 		const out = classifyKeys([synth("PLANS_LOGIN_TOKEN", true)], providers);
 		assert.equal(out.unknownRows.length, 1);
-		assert.equal(out.providerRows.length, 0);
+		assert.equal(out.providerRows.length, 3);
+	});
+
+	it("papersplainer: Anthropic, OpenAI and Google always have a row and never sit in the Add dropdown", () => {
+		const all: ProviderKeyInfo[] = [
+			...providers,
+			{ id: "anthropic", envVar: "ANTHROPIC_API_KEY", label: "Anthropic" },
+			{ id: "openai", envVar: "OPENAI_API_KEY", label: "OpenAI" },
+			{ id: "google", envVar: "GEMINI_API_KEY", label: "Google" },
+		];
+		const out = classifyKeys([synth("GROQ_API_KEY", true), synth("OPENAI_API_KEY", true)], all);
+		assert.deepEqual(out.providerRows.map((r) => [r.id, r.present]), [
+			["ANTHROPIC_API_KEY", false], ["OPENAI_API_KEY", true], ["GEMINI_API_KEY", false], ["GROQ_API_KEY", true],
+		]);
+		assert.deepEqual(out.addable.map((p) => p.id), ["deepseek", "openrouter"]);
 	});
 
 	it("providers seam absent = addable empty, nothing crashes", () => {

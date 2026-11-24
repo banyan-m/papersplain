@@ -408,6 +408,15 @@ export function SettingsDialogBody({
 							{s.id === "plugins" && <hr className="my-2 border-border" />}
 						</div>
 					))}
+					{/* papersplainer: the agents' instructions live on their own
+					    read-only page now, not in Settings. */}
+					<a
+						href="/how-it-works"
+						data-testid="settings-nav-how-it-works"
+						className="shrink-0 rounded-sm px-3 py-1.5 font-ui text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+					>
+						How the agents work
+					</a>
 				</nav>
 
 				{/* Content column — one section at a time, this scrolls — and
