@@ -40,8 +40,11 @@ jobs:
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
       - run: node scripts/smoke-server.mjs --electron
+      # Every build gets a higher version (0.7.<run number>) so installed
+      # apps recognise it as an update. Only the packaged app's version
+      # changes; package.json in the repo stays as it is.
       - name: Package (no publish)
-        run: npx electron-builder --win --x64 --publish never
+        run: npx electron-builder --win --x64 --publish never -c.extraMetadata.version="0.7.${GITHUB_RUN_NUMBER}"
       - name: Save the installer
         uses: actions/upload-artifact@v7
         with:
@@ -67,9 +70,10 @@ jobs:
       - name: Exercise packaged demo runtime
         run: node scripts/smoke-demo-runtime.mjs --standalone dist/win-unpacked/resources/server/standalone --runtime dist/win-unpacked/Papersplainer.exe --browser
       # Runs last, so only a build that passed the packaged-app checks is
-      # published. One rolling release with fixed file names gives a permanent
-      # download link. It is marked a pre-release so the app's update check,
-      # which reads the newest full release, keeps finding nothing.
+      # published. One rolling release holds the newest installer under a
+      # fixed name (a permanent download link) and the update feed installed
+      # Windows apps read: latest.yml plus the installer it names. It is a
+      # pre-release; the app reads it by direct URL (electron/main.cjs).
       - name: Publish to the latest-build release
         shell: bash
         env:
@@ -77,10 +81,39 @@ jobs:
         run: |
           set -euo pipefail
           installer=$(ls dist/*setup.exe | head -1)
+          name=$(basename "$installer")
+          # electron-builder writes latest.yml when it knows where updates
+          # are published; write it here if it did not.
+          if [ ! -f dist/latest.yml ]; then
+            node -e '
+              const fs = require("fs"), crypto = require("crypto");
+              const [file, name, version] = process.argv.slice(1);
+              const data = fs.readFileSync(file);
+              const sha512 = crypto.createHash("sha512").update(data).digest("base64");
+              fs.writeFileSync("dist/latest.yml", [
+                `version: ${version}`, "files:", `  - url: ${name}`, `    sha512: ${sha512}`, `    size: ${data.length}`,
+                `path: ${name}`, `sha512: ${sha512}`, `releaseDate: \x27${new Date().toISOString()}\x27`, "",
+              ].join("\n"));
+            ' "$installer" "$name" "0.7.${GITHUB_RUN_NUMBER}"
+          fi
+          cat dist/latest.yml
+          grep -q "$name" dist/latest.yml
           cp "$installer" "Papersplainer-windows-x64-setup.exe"
           gh release view latest-build >/dev/null 2>&1 || gh release create latest-build --prerelease --target "$GITHUB_SHA" \
             --title "Latest build" --notes "Newest installers, replaced by every successful build." || true
+          # The installer first, the feed last: an app that reads the new
+          # latest.yml must find the file it names.
+          gh release upload latest-build "$installer" --clobber
+          if [ -f "$installer.blockmap" ]; then gh release upload latest-build "$installer.blockmap" --clobber; fi
           gh release upload latest-build "Papersplainer-windows-x64-setup.exe" --clobber
+          gh release upload latest-build dist/latest.yml --clobber
+          # Drop the versioned installers of earlier builds.
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest-build" --jq '.assets[] | "\(.id) \(.name)"' | while read -r id asset; do
+            case "$asset" in
+              "$name"|"$name.blockmap") ;;
+              Papersplainer-0.*-x64-setup.exe|Papersplainer-0.*-x64-setup.exe.blockmap) gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id" >/dev/null ;;
+            esac
+          done
           gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-build" -f sha="$GITHUB_SHA" -F force=true >/dev/null
-          echo "Windows: built from $GITHUB_REF_NAME at ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)" > "Papersplainer-windows-x64-setup.exe.txt"
+          echo "Windows: version 0.7.${GITHUB_RUN_NUMBER}, built from $GITHUB_REF_NAME at ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)" > "Papersplainer-windows-x64-setup.exe.txt"
           gh release upload latest-build "Papersplainer-windows-x64-setup.exe.txt" --clobber

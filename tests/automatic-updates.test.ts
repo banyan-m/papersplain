@@ -238,11 +238,11 @@ describe("status observation never controls the updater", () => {
 });
 
 describe("startup, timer, trusted IPC and menu wiring", () => {
-	it("starts and retains the 24h timer without any Settings subscription, checking current preference each time", async () => {
+	it("starts and retains the 15-minute timer without any Settings subscription, checking current preference each time", async () => {
 		const f = fixture(); f.setSettings({ general: { autoUpdate: false } });
 		await f.run("main()");
 		assert.equal(f.updater.checks, 0);
-		assert.equal(f.intervals.length, 1); assert.equal(f.intervals[0]!.delay, 24 * 60 * 60 * 1000);
+		assert.equal(f.intervals.length, 1); assert.equal(f.intervals[0]!.delay, 15 * 60 * 1000);
 		f.setSettings({ general: { autoUpdate: true } }); f.intervals[0]!.callback(); await Promise.resolve();
 		assert.equal(f.updater.checks, 1);
 		f.windows.length = 0; f.intervals[0]!.callback(); await Promise.resolve();

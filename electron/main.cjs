@@ -471,7 +471,10 @@ const ZOOM_LADDER = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
  * the child server FIRST — deterministic ordering: the server lives
  * inside the .app bundle Squirrel is about to replace (extraResources),
  * and before-quit alone would race the swap. */
-const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// papersplainer: builds arrive several times a day while the app is being
+// worked on, so an open app looks every 15 minutes (and at every launch).
+const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+const PAPERSPLAINER_UPDATE_FEED = "https://github.com/banyan-m/papersplain/releases/download/latest-build";
 let autoUpdater = null; // electron-updater's, packaged builds only
 // Observational only: this snapshot NEVER gates a check, download or install.
 // The revision lets late subscribers reject an older in-flight IPC snapshot.
@@ -550,10 +553,15 @@ function setupAutoUpdater() {
 		reportUpdateStatus("disabled");
 		return;
 	}
-	const feed = process.env.LH_UPDATE_FEED;
+	// papersplainer: Windows builds update from the rolling "latest-build"
+	// release, where every successful build publishes its installer and
+	// latest.yml (.github/workflows/papersplainer-windows.yml). The repo is
+	// public, so the download is anonymous. macOS stays manual: an unsigned
+	// app cannot replace itself there.
+	const feed = process.env.LH_UPDATE_FEED ?? (process.platform === "win32" ? PAPERSPLAINER_UPDATE_FEED : undefined);
 	if (feed) {
 		autoUpdater.setFeedURL({ provider: "generic", url: feed });
-		log(`auto-update: LH_UPDATE_FEED override → ${feed}`);
+		log(`auto-update: feed → ${feed}`);
 	}
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
