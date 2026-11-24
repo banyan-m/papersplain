@@ -18,6 +18,7 @@ import type { ChatStore, JobStore } from "../core/ports.ts";
 import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
 import { fetchPaperTool } from "./tools/paper-fetch.ts";
 import { createPaperTextTool } from "./tools/paper-text.ts";
+import { createSectionTool } from "./tools/section-card.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
 import { createPaperFigureTool } from "./tools/paper-figure.ts";
 import { outlineTool } from "./tools/outline.ts";
@@ -471,6 +472,7 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				paper: createPaperTextTool(ctx),
 				paper_figure: createPaperFigureTool(ctx),
 				outline: outlineTool,
+				section: createSectionTool(ctx),
 				// Library cards, plus the cards prepared for this conversation's paper.
 				formula: createFormulaTool(undefined, () => readManifest(chatCacheKey(ctx.chatId))?.formulas?.cards ?? {}),
 				derivation: derivationTool,

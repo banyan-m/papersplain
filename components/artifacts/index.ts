@@ -7,6 +7,7 @@ import { ImageCard } from "@/components/artifacts/image-card";
 import { ManimCard, MoleculeCard } from "@/components/artifacts/render-card";
 import { ToyDataCard } from "@/components/artifacts/toy-data-card";
 import { OutlineCard } from "@/components/artifacts/outline-card";
+import { SectionCard } from "@/components/artifacts/section-card";
 import { DerivationCard, FormulaCard } from "@/components/artifacts/formula-card";
 import { ProbeDoneCard } from "@/components/artifacts/probe-done-card";
 import { ToolCallCard } from "@/components/artifacts/tool-call-card";
@@ -41,6 +42,8 @@ export const artifactRenderers: Record<string, ComponentType<ArtifactPartProps>>
 	paper_figure: ImageCard,
 	// The walkthrough's position mark (one quiet line per section start).
 	outline: OutlineCard,
+	// One section of the paper as a reading spread: figure, points, takeaway.
+	section: SectionCard,
 	// Formula cards: a draggable annotated formula with a linked plot, and
 	// a derivation stepped through line by line (vendored widget front ends).
 	formula: FormulaCard,

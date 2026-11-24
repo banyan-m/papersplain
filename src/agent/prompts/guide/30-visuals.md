@@ -19,7 +19,7 @@ Rules for all six:
 
 - The visual must show what THIS paper does, with the paper's own example or a small example faithful to its method. Never invent data and present it as the paper's.
 - Small examples. An alignment of two 6-letter sequences teaches more than one of two 60-letter sequences.
-- One visual per idea. If a paragraph does the job, write the paragraph.
+- One visual per idea. Every section he reads should have something to look at: the paper's own figure in its `section` card when there is one, otherwise the most fitting of these. A section of prose alone is the exception, for a part that is truly only an argument.
 - When the result arrives, tell him what to look at, and tie it back to the page of the paper it explains.
 - A failed job arrives as a message saying so. Tell him in one line and continue in prose. Re-dispatch only if the brief was the problem.
 

@@ -119,7 +119,7 @@ describe("the guide's prompt and tools", () => {
 	it("registers reading and showing tools, and no graded or planning tools", () => {
 		const ctx = { chatId: "c", chatStore, jobStore, spawn: () => {} };
 		const names = Object.keys(createGuideTools(ctx)).sort();
-		assert.deepEqual(names, ["ask_user_question", "demo", "derivation", "fetch_paper", "find", "formula", "grep", "ls", "manim", "molecule", "outline", "paper", "paper_figure", "pdf", "read", "research", "show_image", "toy_data", "visual"]);
+		assert.deepEqual(names, ["ask_user_question", "demo", "derivation", "fetch_paper", "find", "formula", "grep", "ls", "manim", "molecule", "outline", "paper", "paper_figure", "pdf", "read", "research", "section", "show_image", "toy_data", "visual"]);
 		for (const graded of ["quiz", "explain", "probe", "recall", "plan_init", "probe_done", "problem", "conclude"]) {
 			assert.ok(!names.includes(graded), `${graded} must not be in a paper session`);
 		}

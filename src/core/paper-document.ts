@@ -278,7 +278,8 @@ export function cropsForPage(figureNumbers: readonly number[], boxes: readonly F
 		.map((b) => ({ x0: Math.max(0, b.x0), y0: Math.max(0, b.y0), x1: Math.min(1, b.x1), y1: Math.min(1, b.y1) }))
 		.filter((b) => boxArea(b) >= 0.015);
 	if (sizeable.length === 0 || figureNumbers.length === 0) return crops;
-	const pad = (b: FractionBox): FractionBox => ({ x0: Math.max(0, b.x0 - 0.015), y0: Math.max(0, b.y0 - 0.015), x1: Math.min(1, b.x1 + 0.015), y1: Math.min(1, b.y1 + 0.015) });
+	// A little air on three sides; almost none below, where the caption sits.
+	const pad = (b: FractionBox): FractionBox => ({ x0: Math.max(0, b.x0 - 0.012), y0: Math.max(0, b.y0 - 0.012), x1: Math.min(1, b.x1 + 0.012), y1: Math.min(1, b.y1 + 0.003) });
 	if (figureNumbers.length === 1) {
 		const union = sizeable.reduce((u, b) => ({ x0: Math.min(u.x0, b.x0), y0: Math.min(u.y0, b.y0), x1: Math.max(u.x1, b.x1), y1: Math.max(u.y1, b.y1) }));
 		if (boxArea(union) < 0.85) crops.set(figureNumbers[0]!, pad(union));

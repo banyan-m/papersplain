@@ -20,6 +20,8 @@ export * from "./paper-cache.ts";
 export * from "./subject-progress.ts";
 export * from "./expr.ts";
 export * from "./formula.ts";
+export * from "./section-card.ts";
+export * from "./paper-document.ts";
 export { embedLearnerImage } from "./learner-image-svg.ts";
 export * from "./ports.ts";
 export * from "./chains.ts";

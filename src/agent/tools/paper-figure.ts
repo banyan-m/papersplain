@@ -19,6 +19,21 @@ const paperFigureInput = Type.Object({
 	figure: Type.Integer({ minimum: 1, description: "The figure's number as printed in the paper (Figure 3 → 3)." }),
 });
 
+/** One of the session's paper's figures, loaded and saved as a snapshot of
+ *  this chat. Throws with a message the guide can act on. */
+export async function loadPaperFigure(ctx: { chatId: string; chatStore: Pick<ChatStore, "saveImageSnapshot"> }, figure: number, signal?: AbortSignal) {
+	const key = chatPaperKey(ctx.chatId);
+	if (!key) throw new Error("no paper has been read in this session yet; call `paper` on it first");
+	const figures = readManifest(key)?.figures;
+	if (!figures) throw new Error("the paper's figures are still being collected; continue, and try again in a moment");
+	if (figures.length === 0) throw new Error("no numbered figure captions were found in this PDF, so there are no figures to show");
+	const found = figures.find((f) => f.number === figure);
+	if (!found) throw new Error(`there is no Figure ${figure}; this paper's figures are: ${figures.map((f) => f.number).join(", ")}`);
+	const image = await loadAppImage(path.join(figuresDir(key), found.file), signal);
+	ctx.chatStore.saveImageSnapshot(ctx.chatId, image.snapshotId, image);
+	return { found, image };
+}
+
 export function createPaperFigureTool(ctx: { chatId: string; chatStore: Pick<ChatStore, "saveImageSnapshot"> }): AgentTool<typeof paperFigureInput> {
 	return {
 		name: "paper_figure",
@@ -29,15 +44,7 @@ export function createPaperFigureTool(ctx: { chatId: string; chatStore: Pick<Cha
 			"read what a figure shows (axes, panels, values) with the pdf tool. Available once `paper` has returned the outline.",
 		parameters: paperFigureInput,
 		execute: serverExecute("paper_figure", paperFigureInput, async ({ figure }, { signal }): Promise<ImageFileResult> => {
-			const key = chatPaperKey(ctx.chatId);
-			if (!key) throw new Error("no paper has been read in this session yet; call `paper` on it first");
-			const figures = readManifest(key)?.figures;
-			if (!figures) throw new Error("the paper's figures are still being collected; continue, and try again in a moment");
-			if (figures.length === 0) throw new Error("no numbered figure captions were found in this PDF, so there are no figure pages to show");
-			const found = figures.find((f) => f.number === figure);
-			if (!found) throw new Error(`there is no Figure ${figure}; this paper's figures are: ${figures.map((f) => f.number).join(", ")}`);
-			const image = await loadAppImage(path.join(figuresDir(key), found.file), signal);
-			ctx.chatStore.saveImageSnapshot(ctx.chatId, image.snapshotId, image);
+			const { found, image } = await loadPaperFigure(ctx, figure, signal);
 			const caption = `Figure ${found.number} (page ${found.page})${found.caption ? `: ${found.caption}` : ""}`;
 			const shown = found.cropped ? "the figure itself" : `the whole of page ${found.page}, which carries it (say which part of the page to look at)`;
 			const details: ShowImageDetails = {
