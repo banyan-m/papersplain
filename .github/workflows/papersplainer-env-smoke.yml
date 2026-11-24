@@ -45,4 +45,9 @@ jobs:
             export PATH="$(dirname "$(command -v node)"):/usr/bin:/bin:/usr/sbin:/sbin"
             unset PKG_CONFIG_PATH HOMEBREW_PREFIX
           fi
+          # Most people's machines have no Python the app could borrow. Make
+          # the app download its own, as it does there, so the check covers it.
+          export UV_PYTHON_PREFERENCE=only-managed
           npx tsx scripts/smoke-render-env.ts
+          echo "SIZE (MB) of the animation environment's parts:"
+          du -sm "$LH_DATA_DIR"/render-env/* "$LH_DATA_DIR"/render-env/python/cpython-*/* 2>/dev/null || true

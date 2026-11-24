@@ -38,6 +38,7 @@ const GENERATOR = [
 
 function folderMegabytes(dir: string): number {
 	let bytes = 0;
+	if (!fs.existsSync(dir)) return 0; // an interpreter supplied through LH_MANIM_PYTHON
 	const walk = (d: string) => {
 		for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
 			const full = path.join(d, entry.name);

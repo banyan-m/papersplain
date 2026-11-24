@@ -10,8 +10,9 @@ on:
     branches: [mac-build]
   workflow_dispatch:
 
+# contents: write lets the last step publish the installer to the "latest-build" release.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: papersplainer-mac-${{ github.ref }}
@@ -55,6 +56,16 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: dist/*.dmg
+      - name: Report installed size
+        run: |
+          app="dist/mac-arm64/Papersplainer.app"
+          echo "SIZE app total: $(du -sm "$app" | cut -f1) MB"
+          echo "SIZE dmg: $(du -sm dist/*.dmg | cut -f1 | paste -sd+ - | bc) MB"
+          du -sm "$app"/Contents/* | sort -rn | sed 's/^/SIZE top: /'
+          du -sm "$app"/Contents/Frameworks/* 2>/dev/null | sort -rn | head -6 | sed 's/^/SIZE frameworks: /'
+          du -sm "$app"/Contents/Resources/* | sort -rn | head -10 | sed 's/^/SIZE resources: /'
+          du -sm "$app"/Contents/Resources/server/standalone/* "$app"/Contents/Resources/server/standalone/.next 2>/dev/null | sort -rn | head -8 | sed 's/^/SIZE standalone: /'
+          du -sm "$app"/Contents/Resources/server/standalone/node_modules/* "$app"/Contents/Resources/server/standalone/node_modules/@*/* 2>/dev/null | sort -rn | head -40 | sed 's/^/SIZE module: /'
       # Checks on the packaged app. They run after the app is saved, so a
       # failure here is reported without withholding it.
       - name: Initialize packaged providers offline
@@ -66,3 +77,21 @@ jobs:
         run: |
           app="dist/mac-arm64/Papersplainer.app/Contents"
           node scripts/smoke-demo-runtime.mjs --standalone "$app/Resources/server/standalone" --runtime "$app/MacOS/Papersplainer" --browser
+      # Runs last, so only a build that passed the packaged-app checks is
+      # published. One rolling release with fixed file names gives a permanent
+      # download link. It is marked a pre-release so the app's update check,
+      # which reads the newest full release, keeps finding nothing.
+      - name: Publish to the latest-build release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          installer=$(ls dist/*.dmg | head -1)
+          cp "$installer" "Papersplainer-mac-arm64.dmg"
+          gh release view latest-build >/dev/null 2>&1 || gh release create latest-build --prerelease --target "$GITHUB_SHA" \
+            --title "Latest build" --notes "Newest installers, replaced by every successful build." || true
+          gh release upload latest-build "Papersplainer-mac-arm64.dmg" --clobber
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-build" -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          echo "Mac (Apple silicon): built from $GITHUB_REF_NAME at ${GITHUB_SHA:0:7} on $(date -u +%Y-%m-%d)" > "Papersplainer-mac-arm64.dmg.txt"
+          gh release upload latest-build "Papersplainer-mac-arm64.dmg.txt" --clobber
