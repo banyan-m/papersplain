@@ -8,6 +8,7 @@
  */
 
 import type { FormulaCardInput } from "./formula.ts";
+import type { PaperDocument } from "./paper-document.ts";
 
 export interface PaperFigure {
 	/** The figure's number as printed ("Figure 3" → 3). */
@@ -16,8 +17,10 @@ export interface PaperFigure {
 	page: number;
 	/** The caption's opening text. */
 	caption: string;
-	/** PNG of that whole page, under the cache's figures folder. */
+	/** The image, under the cache's figures folder: the figure itself when
+	 *  `cropped`, otherwise a PNG of the whole page. */
 	file: string;
+	cropped?: boolean;
 }
 
 export interface ToyDataFile {
@@ -51,6 +54,9 @@ export interface PaperManifest {
 	toy?: ToyData;
 	/** Absent until the formula pass has run for this paper. */
 	formulas?: PaperFormulas;
+	/** Absent until the paper has been converted to Markdown (paper.md beside
+	 *  this manifest). core/paper-document.ts. */
+	document?: PaperDocument;
 }
 
 /** Formula cards prepared for one paper (agent/subagents/paper-formulas.ts):

@@ -95,6 +95,9 @@ export const CUSTOM_PROVIDER_INFO: ProviderKeyInfo = {
  *  not (Michael, 2026-11-24: "why is there no provider key for Claude").
  *  Every other provider stays behind the Add dropdown. */
 export const FIXED_PROVIDER_KEYS = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"] as const;
+/** papersplainer: the key the paper converter uses. Its row sits in its own
+ *  "Paper reading" group, not among the model providers. */
+export const PAPER_OCR_KEY = "MISTRAL_API_KEY";
 const FIXED_PROVIDER_LABELS: Record<string, string> = {
 	ANTHROPIC_API_KEY: "Anthropic (Claude)",
 	OPENAI_API_KEY: "OpenAI",
@@ -117,6 +120,8 @@ export function classifyKeys(
 	unknownRows: AuthKeyStatus[];
 	/** Providers without a stored key — the Add dropdown's options. */
 	addable: ProviderKeyInfo[];
+	/** The paper converter's key (synthesized when absent — always shown). */
+	paperRow: AuthKeyStatus;
 } {
 	const byId = new Map(statuses.map((s) => [s.id, s]));
 	const isTool = (id: string) => (TOOL_IDS as readonly string[]).includes(id);
@@ -137,6 +142,7 @@ export function classifyKeys(
 		// section), so it never shows here — not as a provider row, not as an
 		// "other stored variable".
 		if (s.id === CUSTOM_PROVIDER.envVar) continue;
+		if (s.id === PAPER_OCR_KEY) continue; // its own group
 		if (providerEnv.has(s.id) || (!s.info && providers === undefined)) providerRows.push(s);
 		else if (!s.info) unknownRows.push(s);
 		// (pre-interlude catalogs: a curated-but-unclassified status still
@@ -153,7 +159,8 @@ export function classifyKeys(
 		],
 		toolRows: TOOL_IDS.map((id) => byId.get(id) ?? synth(id)),
 		unknownRows,
-		addable: (providers ?? []).filter((p) => !byId.has(p.envVar) && !fixed.has(p.envVar)),
+		addable: (providers ?? []).filter((p) => !byId.has(p.envVar) && !fixed.has(p.envVar) && p.envVar !== PAPER_OCR_KEY),
+		paperRow: byId.get(PAPER_OCR_KEY) ?? synth(PAPER_OCR_KEY),
 	};
 }
 
@@ -488,7 +495,7 @@ export function KeysSection({
 		return <p className="px-6 py-5 text-xs text-muted-foreground/70">Loading keys…</p>;
 	}
 
-	const { providerRows, toolRows, unknownRows, addable } = classifyKeys(statuses, providers);
+	const { providerRows, toolRows, unknownRows, addable, paperRow } = classifyKeys(statuses, providers);
 
 	async function saveNewProvider(p: ProviderKeyInfo, value: string) {
 		const err = await saveKey(p.envVar, value);
@@ -586,6 +593,27 @@ export function KeysSection({
 						<span className="font-mono text-[11px] text-muted-foreground">{status.masked}</span>
 					</div>)}
 				</div>}
+			</SettingsGroup>
+
+			<SettingsGroup label="Paper reading" testid="group-paper-reading">
+				<KeyTableRow
+					label="Mistral OCR"
+					docsUrl="https://console.mistral.ai/api-keys"
+					status={paperRow}
+					expanded={openRow === paperRow.id}
+					onToggle={() => setOpenRow(openRow === paperRow.id ? null : paperRow.id)}
+					onSave={async (v) => {
+						const err = await saveKey(paperRow.id, v);
+						if (!err) setOpenRow(null);
+						return err;
+					}}
+					onCancel={() => setOpenRow(null)}
+					onDelete={() => deleteKey(paperRow.id)}
+					testid="key-mistral_api_key"
+				/>
+				<p data-testid="paper-reading-hint" className="px-1 text-[11px] leading-relaxed text-muted-foreground/70">
+					Optional. With a key, each paper is sent to Mistral once and comes back as clean text with its figures cut out. Without one, the app uses the text already inside the PDF.
+				</p>
 			</SettingsGroup>
 
 			<SettingsGroup label="Subscriptions" testid="group-subscriptions">

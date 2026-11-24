@@ -63,7 +63,7 @@ export type AgentKind = "prober" | "teacher" | "practice" | "guide";
 export const CONVERSATION_TOOL_NAMES = Object.freeze([
 	...QUESTION_TOOLS, ...TOGGLEABLE_TOOLS, "probe_done", "read", "ls", "find", "grep",
 	"plan_init", "list_sessions", "list_propositions", "problem", "conclude", sendToUserTool.name,
-	"manim", "molecule", "fetch_paper", "paper_figure", "toy_data", "outline", "formula", "derivation",
+	"manim", "molecule", "fetch_paper", "paper", "paper_figure", "toy_data", "outline", "formula", "derivation",
 ] as const);
 
 // P2 (2026-09-19): segment discovery + override resolution live in ONE
@@ -418,7 +418,7 @@ export function createPracticeAgent(ctx: PracticeToolContext, opts: AgentBuildOp
 export function guideModeInstructions(mode: "walkthrough" | "chat"): string {
 	return mode === "chat"
 		? "## This session's mode: free chat\n\nThe learner leads. Answer what they ask about the paper, grounded in the paper. Do not start a section-by-section tour unless they ask for one. Make a visual only when it answers the question better than a paragraph would."
-		: "## This session's mode: walkthrough\n\nYou lead. Go through the paper one section or figure at a time, in the order that builds understanding. After each one, STOP and wait: the learner says continue, or asks about what they just read. Never run on into the next section in the same turn.\n\nKeep the outline. Once your first `pdf` brief has mapped the paper, call `outline` with the sections you will go through, in order, and `current: 1`. Each time you start the next section, call `outline` again with the same list and the new number. It is instant and it is how the learner sees how far through the paper he is, so do not skip it and do not announce it.";
+		: "## This session's mode: walkthrough\n\nYou lead. Go through the paper one section or figure at a time, in the order that builds understanding. After each one, STOP and wait: the learner says continue, or asks about what they just read. Never run on into the next section in the same turn.\n\nKeep the outline. Once `paper` has shown you the paper's sections, call `outline` with the sections you will go through, in order, and `current: 1`. Each time you start the next section, call `outline` again with the same list and the new number. It is instant and it is how the learner sees how far through the paper he is, so do not skip it and do not announce it.";
 }
 
 /**

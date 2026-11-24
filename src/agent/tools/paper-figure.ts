@@ -9,9 +9,10 @@ import { loadAppImage } from "./learner-image.ts";
 
 /**
  * papersplainer: paper_figure. Shows one of the paper's own figures in the
- * session: the PDF page that carries it, rendered when the paper was first
- * read and kept in the paper's cache. Instant and model-free. The image is
- * shown to the learner only; the guide reads figures through the pdf tool.
+ * session: the figure cut out of the paper when it was converted (or, when
+ * it could not be cut out, the PDF page that carries it), kept in the
+ * paper's cache. Instant and model-free. The image is shown to the learner
+ * only; the guide reads figures through the pdf tool.
  */
 
 const paperFigureInput = Type.Object({
@@ -23,13 +24,13 @@ export function createPaperFigureTool(ctx: { chatId: string; chatStore: Pick<Cha
 		name: "paper_figure",
 		label: "paper_figure",
 		description:
-			"Show one of the paper's own figures to the learner: the page of the PDF that carries it, with its caption. Instant. " +
+			"Show one of the paper's own figures to the learner, with its caption. Instant. " +
 			"Use it whenever you explain a figure, so he sees what you are describing. You are not sent the image: " +
-			"read a figure's content with the pdf tool. Available after the paper has been read once with pdf.",
+			"read what a figure shows (axes, panels, values) with the pdf tool. Available once `paper` has returned the outline.",
 		parameters: paperFigureInput,
 		execute: serverExecute("paper_figure", paperFigureInput, async ({ figure }, { signal }): Promise<ImageFileResult> => {
 			const key = chatPaperKey(ctx.chatId);
-			if (!key) throw new Error("no paper has been read in this session yet; dispatch the pdf tool on the paper first");
+			if (!key) throw new Error("no paper has been read in this session yet; call `paper` on it first");
 			const figures = readManifest(key)?.figures;
 			if (!figures) throw new Error("the paper's figures are still being collected; continue, and try again in a moment");
 			if (figures.length === 0) throw new Error("no numbered figure captions were found in this PDF, so there are no figure pages to show");
@@ -38,15 +39,16 @@ export function createPaperFigureTool(ctx: { chatId: string; chatStore: Pick<Cha
 			const image = await loadAppImage(path.join(figuresDir(key), found.file), signal);
 			ctx.chatStore.saveImageSnapshot(ctx.chatId, image.snapshotId, image);
 			const caption = `Figure ${found.number} (page ${found.page})${found.caption ? `: ${found.caption}` : ""}`;
+			const shown = found.cropped ? "the figure itself" : `the whole of page ${found.page}, which carries it (say which part of the page to look at)`;
 			const details: ShowImageDetails = {
-				path: `figure-${found.number}.png`,
+				path: found.file,
 				caption,
 				mimeType: image.mimeType,
 				snapshotId: image.snapshotId,
 				width: image.width,
 				height: image.height,
 			};
-			return { text: `Shown to the learner: page ${found.page} of the paper, carrying ${caption}`, details };
+			return { text: `Shown to the learner: ${shown}. ${caption}`, details };
 		}),
 	};
 }

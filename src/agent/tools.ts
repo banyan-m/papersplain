@@ -17,6 +17,7 @@ import type { JobRecord } from "../core/contracts.ts";
 import type { ChatStore, JobStore } from "../core/ports.ts";
 import { jobTools, renderJobTools, type JobInput } from "./tools/jobs.ts";
 import { fetchPaperTool } from "./tools/paper-fetch.ts";
+import { createPaperTextTool } from "./tools/paper-text.ts";
 import { createMoleculeTool } from "./tools/molecule.ts";
 import { createPaperFigureTool } from "./tools/paper-figure.ts";
 import { outlineTool } from "./tools/outline.ts";
@@ -467,6 +468,7 @@ export function createGuideTools(ctx: GuideToolContext, enabled?: EnabledTools):
 				show_image: createShowImageTool(ctx),
 				fetch_paper: fetchPaperTool,
 				molecule: createMoleculeTool(ctx),
+				paper: createPaperTextTool(ctx),
 				paper_figure: createPaperFigureTool(ctx),
 				outline: outlineTool,
 				// Library cards, plus the cards prepared for this conversation's paper.

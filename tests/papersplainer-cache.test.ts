@@ -19,7 +19,8 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall, type FauxResponseSt
 import { PATHS } from "../config.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import { createPaperFigureTool } from "../src/agent/tools/paper-figure.ts";
-import { chatCacheKey, chatPaperKey, chatToyData, ensurePaperFigures, forgetChatPaper, paperCacheDir, paperKeyForFile, readManifest, setChatPaper, toyDir } from "../src/agent/subagents/paper-cache-store.ts";
+import { ensurePaperDocument } from "../src/agent/subagents/paper-document.ts";
+import { chatCacheKey, chatPaperKey, chatToyData, forgetChatPaper, paperCacheDir, paperKeyForFile, readManifest, setChatPaper, toyDir } from "../src/agent/subagents/paper-cache-store.ts";
 import { createJobRunner, demoModelOverride, pdfModelOverride, visualModelOverride } from "../src/agent/subagents/runner.ts";
 import { chatRendersDir } from "../src/agent/subagents/render-env.ts";
 import { PythonSandboxTimeout, runSandboxedPython, sandboxRequestTarget } from "../src/agent/subagents/python-sandbox.ts";
@@ -131,12 +132,12 @@ describe("the paper's figures", () => {
 		const key = await paperKeyForFile(PDF);
 		createdKeys.push(key);
 		fs.rmSync(paperCacheDir(key), { recursive: true, force: true });
-		const figures = await ensurePaperFigures(PDF, key);
+		const { figures } = await ensurePaperDocument(PDF, key);
 		assert.deepEqual(figures.map((f) => [f.number, f.page, f.file]), [[1, 1, "figure-1.png"], [2, 2, "figure-2.png"]]);
 		assert.match(figures[0]!.caption, /^Overview of the pipeline/);
 		assert.equal(readManifest(key)?.figures?.length, 2);
 		const stamp = fs.statSync(path.join(paperCacheDir(key), "figures", "figure-1.png")).mtimeMs;
-		await ensurePaperFigures(PDF, key);
+		await ensurePaperDocument(PDF, key);
 		assert.equal(fs.statSync(path.join(paperCacheDir(key), "figures", "figure-1.png")).mtimeMs, stamp, "a second call reuses the cache");
 
 		const chat = chatStore.createChat("Test: paper figure", "paper");

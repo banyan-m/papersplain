@@ -1,3 +1,4 @@
+import { readPaperMarkdown } from "./paper-document.ts";
 import { randomUUID } from "node:crypto";
 import type { Message, Usage } from "@earendil-works/pi-ai";
 import { piEngineFor, type PiEngine } from "../models.ts";
@@ -166,7 +167,9 @@ export function ensurePaperFormulas(pdfPath: string, key: string, opts: PaperFor
 	const running = passes.get(key);
 	if (running) return running;
 	const run = (async (): Promise<PaperFormulas | null> => {
-		const text = await pdfExtract(pdfPath, "all");
+		// The converted text when the paper has been converted (better equations
+		// from OCR), else the PDF's own text layer.
+		const text = readPaperMarkdown(key) ?? (await pdfExtract(pdfPath, "all"));
 		if (text.trim() === "") return null; // a scanned PDF: nothing to read here
 		const { rejected, ...formulas } = await runPaperFormulaPass(text, opts);
 		if (rejected.length > 0) console.error(`[paper-formulas ${key}] dropped ${rejected.length} card(s):`, rejected.map((r) => `${r.name}: ${r.reason}`).join(" | "));

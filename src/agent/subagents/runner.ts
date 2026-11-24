@@ -28,7 +28,8 @@ import {
 import { toyDataContext } from "../../core/paper-cache.ts";
 import { runToyDataMaker } from "./toy-data-maker.ts";
 import { ensurePaperFormulas } from "./paper-formulas.ts";
-import { chatCacheKey, chatPaperKey, chatToyData, ensurePaperFigures, paperKeyForFile, readManifest, setChatPaper, toyDir, updateManifest } from "./paper-cache-store.ts";
+import { chatCacheKey, chatPaperKey, chatToyData, paperKeyForFile, readManifest, setChatPaper, toyDir, updateManifest } from "./paper-cache-store.ts";
+import { ensurePaperDocument } from "./paper-document.ts";
 import { resolvePaperOrSourcePath } from "../tools/paper-fetch.ts";
 import { runManimMaker } from "./manim-maker.ts";
 import { chatRendersDir } from "./render-env.ts";
@@ -586,17 +587,23 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 	 *  Link the session to the paper's cache and collect its figure pages in
 	 *  the background. Never fails the read. */
 	function adoptPaper(chatId: string, rawPath: string, loop: LoopContext): void {
-		if (chatStore.getChat(chatId)?.kind !== "paper" || chatPaperKey(chatId)) return;
+		if (chatStore.getChat(chatId)?.kind !== "paper") return;
 		void (async () => {
 			const pdf = resolvePaperOrSourcePath(rawPath);
 			const key = await paperKeyForFile(pdf);
-			if (chatPaperKey(chatId)) return;
-			// Toy data made before the paper was known moves to the paper's cache.
-			const early = readManifest(`chat-${chatId}`)?.toy;
-			setChatPaper(chatId, key);
-			updateManifest(key, pdf, (manifest) => { if (early && !manifest.toy) manifest.toy = early; });
-			if (early && !fsSync.existsSync(toyDir(key))) await fs.cp(toyDir(`chat-${chatId}`), toyDir(key), { recursive: true });
-			await ensurePaperFigures(pdf, key);
+			const linked = chatPaperKey(chatId);
+			// A session has one paper; another PDF read later is just a source.
+			if (linked && linked !== key) return;
+			if (!linked) {
+				// Toy data made before the paper was known moves to the paper's cache.
+				const early = readManifest(`chat-${chatId}`)?.toy;
+				setChatPaper(chatId, key);
+				updateManifest(key, pdf, (manifest) => { if (early && !manifest.toy) manifest.toy = early; });
+				if (early && !fsSync.existsSync(toyDir(key))) await fs.cp(toyDir(`chat-${chatId}`), toyDir(key), { recursive: true });
+			}
+			// The paper's text and figures, converted once (a no-op when the
+			// `paper` tool already did it).
+			await ensurePaperDocument(pdf, key, loop.abortSignal);
 			// Formula cards for the paper (one call on the cheap slot, the
 			// toy-data maker's role). Its spend is folded into this pdf job.
 			await ensurePaperFormulas(pdf, key, {

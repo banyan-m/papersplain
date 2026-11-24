@@ -96,13 +96,13 @@ export const fetchPaperTool: AgentTool<typeof fetchPaperInput> = {
 	label: "fetch_paper",
 	description:
 		"Download a paper's PDF from a link the learner gave (direct PDF links, arXiv, bioRxiv, medRxiv). " +
-		"Returns the local file path; then dispatch the pdf tool on that path to read it. " +
+		"Returns the local file path; then call `paper` with that path to read it. " +
 		"Not for files already on the learner's computer: use their path directly.",
 	parameters: fetchPaperInput,
 	execute: serverExecute("fetch_paper", fetchPaperInput, async ({ url }, { signal }) => {
 		try {
 			const saved = await downloadPaper(url, signal);
-			return `Saved ${(saved.bytes / 1024 / 1024).toFixed(1)} MB from ${saved.url} to ${saved.path}\nRead it with the pdf tool, using exactly that path.`;
+			return `Saved ${(saved.bytes / 1024 / 1024).toFixed(1)} MB from ${saved.url} to ${saved.path}\nRead it with the paper tool, using exactly that path.`;
 		} catch (err) {
 			if (signal?.aborted) throw err;
 			return `fetch_paper failed for ${url}: ${err instanceof Error ? err.message : String(err)}.`;

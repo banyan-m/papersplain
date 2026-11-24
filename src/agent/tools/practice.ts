@@ -14,6 +14,7 @@
  * (prompts/practice/10-doctrine.md).
  */
 
+import { createPaperTextTool } from "./paper-text.ts";
 import { Type, type Static } from "typebox";
 import { practiceProblemInputSchema } from "../../core/practice-problems.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -214,6 +215,8 @@ export function practiceTools(ctx: PracticeToolContext, gate: PracticeGate = cre
 		grep: grepTool,
 		...(jobs?.research ? { research: jobs.research } : {}),
 		...(jobs ? { pdf: jobs.pdf! } : {}),
+		// papersplainer: the paper's converted text, shared with the other modes.
+		paper: createPaperTextTool(ctx),
 		...(ctx.graph ? proberGraphTools(ctx.graph) : {}),
 	});
 }

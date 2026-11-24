@@ -25,10 +25,17 @@ import type { GraphContextPick } from "../core/native-messages.ts";
 import { outlineOf, outlineSteps, planSteps, practiceResults, stepPosition, type ProgressStep, type SubjectProgress } from "../core/subject-progress.ts";
 import { chatPaperKey, readManifest, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
 import { paperFormulaIndex } from "../core/paper-cache.ts";
+import { paperOutline } from "../core/paper-document.ts";
+import { paperConverterKeys } from "../agent/subagents/paper-document.ts";
+import { keyValue } from "./keys.ts";
 import { createSession, deleteChatSession, titleFromPrompt, type ChatDeleteMode, type ChatDeleteOutcome } from "./chats.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
+
+// The paper converter uses Mistral OCR when a Mistral key is saved
+// (agent/subagents/paper-document.ts); the key lives in this layer.
+paperConverterKeys.mistral = () => keyValue("MISTRAL_API_KEY");
 
 /** At most this many of a subject's own propositions seed its practice. */
 const PRACTICE_PICK_LIMIT = 24;
@@ -269,13 +276,17 @@ export function subjectPromptAppendix(chatId: string): string | undefined {
 	const location = paperLocation(subject);
 	const paperLines = (): string[] => {
 		const lines: string[] = [];
+		const converted = Boolean(subject.paperKey && readManifest(subject.paperKey)?.document);
 		if (location) {
 			lines.push(
-				`The paper is this file: \`${location}\`.${subject.source && subject.source !== location ? ` (The learner gave it as \`${subject.source}\`.)` : ""} It is already on this machine and you can read it with a \`pdf\` job at that exact path. NEVER ask the learner to upload, attach, paste or send the paper, and never say you do not have it: read it.`,
+				`The paper is this file: \`${location}\`.${subject.source && subject.source !== location ? ` (The learner gave it as \`${subject.source}\`.)` : ""} It is already on this machine. Read it with \`paper\`${converted ? "" : " (pass that exact path the first time)"}: its outline first, then the sections you need. NEVER ask the learner to upload, attach, paste or send the paper, and never say you do not have it: read it.`,
 			);
 		} else {
 			lines.push("The learner has not given the paper's file or link yet. Only in that case, ask for it once (a link or a PDF path; the attach button is in the message box).");
 		}
+		// The converted paper's outline, so no conversation has to ask for it.
+		const manifest = subject.paperKey ? readManifest(subject.paperKey) : null;
+		if (manifest?.document) lines.push("The paper has already been converted to text. Its outline:", "", paperOutline(manifest.document, manifest.figures ?? []), "");
 		// Formula cards prepared for the paper in the background (the
 		// per-paper pass). Absent until it has finished.
 		if (mode !== "practice") {
