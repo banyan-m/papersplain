@@ -65,6 +65,7 @@ import { COMPACTION_RESERVE_TOKENS } from "../core/compaction.ts";
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
+import { kickNotebook } from "./notebook.ts";
 import { asAgentMessages, type LhMessage } from "../core/native-messages.ts";
 import { QUESTION_TOOLS } from "../core/pending.ts";
 import {
@@ -906,6 +907,10 @@ export async function handleChatInput(
 					// against it and the pipeline's batches share it.
 					triggerExtraction(stores, extraction, chatId, effective.graph.extractionChunkTokens);
 				}
+				// papersplainer: fold this exchange into the subject's shared
+				// notebook, in the background (skipped under tests, like the
+				// compaction kick below: scripted chats are fixtures).
+				if (process.env.NODE_ENV !== "test" && (!requestCycle || requestCycle.dispatched)) kickNotebook(chatId);
 				// PARKED DISMISSAL (owner, 2026-10-04): a dismissal that arrived
 				// mid-turn was parked by the dismiss route (202); now that
 				// persistTurn has landed the turn's messages, apply it against

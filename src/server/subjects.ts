@@ -26,6 +26,7 @@ import { outlineOf, outlineSteps, planSteps, practiceResults, stepPosition, type
 import { chatPaperKey, readManifest, setChatPaper } from "../agent/subagents/paper-cache-store.ts";
 import { paperFormulaIndex } from "../core/paper-cache.ts";
 import { paperOutline } from "../core/paper-document.ts";
+import { isNotebookEmpty, notebookText } from "../core/notebook.ts";
 import { paperConverterKeys } from "../agent/subagents/paper-document.ts";
 import { keyValue } from "./keys.ts";
 import { createSession, deleteChatSession, titleFromPrompt, type ChatDeleteMode, type ChatDeleteOutcome } from "./chats.ts";
@@ -268,7 +269,24 @@ export function startSubjectChat(subjectId: string, mode: SubjectMode, title: st
  * The paper paragraph is what makes the three modes share the paper: it
  * names the file, says it is already here, and forbids asking for it.
  */
+/** What each agent is told about its subject, with the shared notebook
+ *  (what the learner's other conversations on it have established). */
 export function subjectPromptAppendix(chatId: string): string | undefined {
+	const base = subjectAppendixBase(chatId);
+	const chat = stores.chatStore.getChat(chatId);
+	const notebook = notebookText(chat?.subjectId ? getSubject(chat.subjectId)?.notebook : undefined);
+	if (!notebook) return base;
+	const section = [
+		"## Notebook: what is known about this learner here",
+		"",
+		"Kept across all of his conversations on this subject (walkthrough, chat, practice) and rewritten after each exchange. Use it: do not re-explain what he has shown he understands, come back to what is shaky, and pick up where it says. Do not read it out to him or mention that it exists.",
+		"",
+		notebook,
+	].join("\n");
+	return base ? `${base}\n\n${section}` : section;
+}
+
+function subjectAppendixBase(chatId: string): string | undefined {
 	const chat = stores.chatStore.getChat(chatId);
 	const subject = chat?.subjectId ? getSubject(chat.subjectId) : null;
 	if (!chat || !subject) return undefined;
@@ -347,6 +365,9 @@ export function subjectProgress(subject: SubjectRecord): SubjectProgress {
 		steps: walkthrough ? walkthroughSteps(walkthrough) : null,
 		practice: practice ? practiceResults(practice.messages) : null,
 		concepts: subjectPropositions(subject, Number.POSITIVE_INFINITY),
+		understanding: isNotebookEmpty(subject.notebook)
+			? null
+			: { solid: subject.notebook!.solid, shaky: subject.notebook!.shaky, asked: subject.notebook!.asked, next: subject.notebook!.next, updatedAt: subject.notebook!.updatedAt },
 	};
 }
 

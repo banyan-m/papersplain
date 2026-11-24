@@ -46,6 +46,30 @@ export function SubjectProgressBody({ subject, progress }: { subject: Pick<Subje
 	const concluded = practice ? PRACTICE_OUTCOMES.reduce((n, o) => n + practice.outcomes[o], 0) : 0;
 	return (
 		<div data-testid="subject-progress" className="mx-auto w-full max-w-2xl px-6 py-8 font-prose">
+			<Section title="Understanding" aside={progress.understanding ? "From all three conversations" : undefined}>
+				{progress.understanding ? (
+					<div className="flex flex-col gap-4" data-testid="progress-understanding">
+						{progress.understanding.next && (
+							<p className="text-sm text-foreground"><span className="text-muted-foreground">Pick up at: </span>{progress.understanding.next}</p>
+						)}
+						{([
+							["solid", "You have shown you understand", "#2fa86f"],
+							["shaky", "Still shaky", "#d4962a"],
+							["asked", "You asked about", "#4f8fe8"],
+						] as const).map(([key, label, colour]) => progress.understanding![key].length > 0 && (
+							<div key={key} data-testid={`understanding-${key}`}>
+								<p className="mb-1.5 text-xs font-semibold" style={{ color: colour }}>{label}</p>
+								<ul className="flex flex-col gap-1.5 border-l-2 pl-3" style={{ borderColor: colour }}>
+									{progress.understanding![key].map((item, i) => <li key={i} className="text-sm text-foreground">{item}</li>)}
+								</ul>
+							</div>
+						))}
+					</div>
+				) : (
+					<Empty>What you have shown you understand, and what is still shaky, appears here after your first exchange. It is written by the cheap model from your conversations and shared with all three modes.</Empty>
+				)}
+			</Section>
+
 			<Section
 				title="Walkthrough"
 				aside={position ? `${paper ? "Section" : "Step"} ${position.current} of ${position.total}` : undefined}

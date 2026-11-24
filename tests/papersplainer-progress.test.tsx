@@ -121,7 +121,7 @@ describe("the subject's progress, end to end", () => {
 		const subject = subjectStore.createSubject({ kind: "paper", title: "AlphaFold 3", source: "https://example.org/af3.pdf" });
 		const walkthrough = chatStore.createChat("af3", "paper", "walkthrough", subject.id);
 		subjectStore.setChat(subject.id, "walkthrough", walkthrough.id);
-		assert.deepEqual(subjectProgress(getSubject(subject.id)!), { steps: null, practice: null, concepts: [] });
+		assert.deepEqual(subjectProgress(getSubject(subject.id)!), { steps: null, practice: null, concepts: [], understanding: null });
 		chatStore.saveMessages(walkthrough.id, outlineTurn(SECTIONS, 2));
 		const progress = subjectProgress(getSubject(subject.id)!);
 		assert.deepEqual(progress.steps!.map((s) => s.state), ["done", "current", "upcoming", "upcoming"]);
@@ -152,12 +152,12 @@ describe("the Progress view", () => {
 	});
 
 	it("an untouched subject points to where each part starts", () => {
-		const html = renderToStaticMarkup(<SubjectProgressBody subject={view} progress={{ steps: null, practice: null, concepts: [] }} />);
+		const html = renderToStaticMarkup(<SubjectProgressBody subject={view} progress={{ steps: null, practice: null, concepts: [], understanding: null }} />);
 		assert.match(html, /once the walkthrough has mapped the paper/);
 		assert.match(html, /href="\/subject\/subj_1\?mode=walkthrough"/);
 		assert.match(html, /No problems yet/);
 		assert.match(html, /href="\/subject\/subj_1\?mode=practice"/);
-		const topic = renderToStaticMarkup(<SubjectProgressBody subject={{ id: "subj_2", kind: "topic" }} progress={{ steps: null, practice: null, concepts: [] }} />);
+		const topic = renderToStaticMarkup(<SubjectProgressBody subject={{ id: "subj_2", kind: "topic" }} progress={{ steps: null, practice: null, concepts: [], understanding: null }} />);
 		assert.match(topic, /found out what you know/);
 	});
 

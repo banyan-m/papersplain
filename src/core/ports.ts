@@ -9,6 +9,7 @@
  * adapters may import core; core NEVER imports an adapter.
  */
 
+import type { SubjectNotebook } from "./notebook.ts";
 import type { LhMessage } from "./native-messages.ts";
 import type { PaperMode } from "./contracts/chat.ts";
 import type { PluginAgentRecord } from "./plugin-agents.ts";
@@ -68,6 +69,8 @@ export interface SubjectStore {
 	shelveChat(id: string, chatId: string): SubjectRecord | null;
 	/** Record what is learned about a paper after creation. */
 	setPaper(id: string, paper: { paperKey?: string; source?: string; title?: string; kind?: SubjectKind }): SubjectRecord | null;
+	/** Replace the subject's notebook (server/notebook.ts). Silent: no list refresh. */
+	setNotebook(id: string, notebook: SubjectNotebook): SubjectRecord | null;
 	/** Remove one conversation's id from the subject. */
 	forgetChat(id: string, chatId: string): SubjectRecord | null;
 	/** Delete the subject record only; its conversations are the caller's

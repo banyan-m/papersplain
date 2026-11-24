@@ -9,6 +9,7 @@
  * conversation) announces "chats-changed" — the sidebar's one refetch signal.
  */
 
+import type { SubjectNotebook } from "../core/notebook.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PATHS } from "../../config.ts";
@@ -114,6 +115,10 @@ function setPaper(id: string, paper: { paperKey?: string; source?: string; title
 	}, paper.title !== undefined || paper.kind !== undefined);
 }
 
+function setNotebook(id: string, notebook: SubjectNotebook): SubjectRecord | null {
+	return update(id, (r) => { r.notebook = notebook; }, false);
+}
+
 /** Drop one conversation from the subject (it was deleted on its own). */
 function forgetChat(id: string, chatId: string): SubjectRecord | null {
 	return update(id, (r) => {
@@ -144,6 +149,7 @@ export const subjectStore: SubjectStore = {
 	setChat,
 	shelveChat,
 	setPaper,
+	setNotebook,
 	forgetChat,
 	deleteSubject,
 };

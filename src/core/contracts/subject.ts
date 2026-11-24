@@ -10,6 +10,7 @@
  *
  * Pure types + tiny pure helpers.
  */
+import type { SubjectNotebook } from "../notebook.ts";
 import { parseFilePaths } from "../file-paths.ts";
 import type { ChatKind, PaperMode } from "./chat.ts";
 
@@ -43,6 +44,9 @@ export interface SubjectRecord {
 	 *  sessions that lost a mode slot to a newer one during conversion. Kept
 	 *  on disk, never deleted silently. */
 	shelved?: string[];
+	/** What the subject's conversations have established about the learner
+	 *  here (core/notebook.ts). Absent until the first exchange is folded in. */
+	notebook?: SubjectNotebook;
 	/** Schema version; absence denotes version 1. */
 	version?: number;
 }

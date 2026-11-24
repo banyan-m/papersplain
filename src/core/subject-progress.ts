@@ -54,6 +54,10 @@ export interface SubjectProgress {
 	practice: PracticeResults | null;
 	/** What came up in this subject's conversations (from the map). */
 	concepts: { id: string; name: string; statement: string }[];
+	/** From the subject's notebook (core/notebook.ts): what he has shown he
+	 *  understands, what is shaky, what he asked for. Null until the first
+	 *  exchange has been folded in. */
+	understanding?: { solid: string[]; shaky: string[]; asked: string[]; next?: string; updatedAt: string } | null;
 }
 
 interface ToolCallBlock { type: "toolCall"; id: string; name: string; arguments?: Record<string, unknown> }
